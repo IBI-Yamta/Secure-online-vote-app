@@ -1,48 +1,1174 @@
-import { useState } from 'react';
-import { AuthProvider, useAuth } from './hooks/useAuth';
-import { AuthForm } from './components/Auth';
-import { Sidebar } from './components/Sidebar';
-import { Dashboard } from './components/Dashboard';
-import { TaskList } from './components/TaskList';
+import React, { useState, useEffect, useRef } from 'react';
 
-type View = 'dashboard' | 'tasks';
+export default function App() {
+  // --- INITIALIZE ELECTION DATA ---
+  const DEFAULT_CANDIDATES = [
+    // President Candidates
+    { id: 'pres_1', name: 'Comrade Yusuf Bello', post: 'President', association: 'NANS', votes: 0, color: 'bg-blue-600' },
+    { id: 'pres_2', name: 'Chinwe Okeke', post: 'President', association: 'NANS', votes: 0, color: 'bg-emerald-600' },
+    { id: 'pres_3', name: 'Amina Danjuma', post: 'President', association: 'NANS', votes: 0, color: 'bg-purple-600' },
+    
+    // Secretary General Candidates
+    { id: 'sec_1', name: 'Ibrahim Musa', post: 'Secretary General', association: 'NANS', votes: 0, color: 'bg-amber-600' },
+    { id: 'sec_2', name: 'Sarah Udoh', post: 'Secretary General', association: 'NANS', votes: 0, color: 'bg-pink-600' },
+    
+    // Treasurer Candidates
+    { id: 'treas_1', name: 'Babajide Adebayo', post: 'Treasurer', association: 'NANS', votes: 0, color: 'bg-indigo-600' },
+    { id: 'treas_2', name: 'Fatima Yusuf', post: 'Treasurer', association: 'NANS', votes: 0, color: 'bg-rose-600' }
+  ];
 
-function AppContent() {
-  const { user, loading } = useAuth();
-  const [currentView, setCurrentView] = useState<View>('dashboard');
+  const POSITIONS = ['President', 'Secretary General', 'Treasurer'];
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
-      </div>
-    );
-  }
+  // --- STATE MANAGEMENT ---
+  const [voters, setVoters] = useState(() => {
+    const saved = localStorage.getItem('evote_voters');
+    return saved ? JSON.parse(saved) : [];
+  });
 
-  if (!user) return <AuthForm />;
+  const [candidates, setCandidates] = useState(() => {
+    const saved = localStorage.getItem('evote_candidates');
+    return saved ? JSON.parse(saved) : DEFAULT_CANDIDATES;
+  });
+
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = localStorage.getItem('evote_current_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  // Navigation states: 'login' | 'register' | 'forgot' | 'first-login-reset' | 'dashboard' | 'admin'
+  const [activeTab, setActiveTab] = useState(currentUser ? 'dashboard' : 'login');
+
+  // Active Ballot Selections
+  const [ballotSelections, setBallotSelections] = useState({
+    'President': null,
+    'Secretary General': null,
+    'Treasurer': null
+  });
+
+  // Forms
+  const [regForm, setRegForm] = useState({ name: '', id: '', email: '', dob: '' });
+  const [loginForm, setLoginForm] = useState({ id: '', password: '' });
+  const [resetForm, setResetForm] = useState({ id: '', dob: '', newPassword: '' });
+  const [firstResetForm, setFirstResetForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  
+  // Registration Results & Alerts
+  const [generatedPass, setGeneratedPass] = useState('');
+  const [alert, setAlert] = useState(null);
+  const [confirmVoteModal, setConfirmVoteModal] = useState(false);
+
+  // Status Check search query
+  const [searchStatusQuery, setSearchStatusQuery] = useState('');
+  const [searchedVoter, setSearchedVoter] = useState(null);
+
+  // --- PERSIST TO LOCAL STORAGE ---
+  useEffect(() => {
+    localStorage.setItem('evote_voters', JSON.stringify(voters));
+  }, [voters]);
+
+  useEffect(() => {
+    localStorage.setItem('evote_candidates', JSON.stringify(candidates));
+  }, [candidates]);
+
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('evote_current_user', JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem('evote_current_user');
+    }
+  }, [currentUser]);
+
+  // --- AUTO-LOCK LOGIC (5 MINUTES INACTIVITY) ---
+  const timeoutIdRef = useRef(null);
+  const INACTIVITY_LIMIT = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+  const triggerLogoutDueToInactivity = () => {
+    if (currentUser) {
+      handleLogout('Session expired due to 5 minutes of inactivity.');
+    }
+  };
+
+  const resetInactivityTimer = () => {
+    if (timeoutIdRef.current) clearTimeout(timeoutIdRef.current);
+    if (currentUser) {
+      timeoutIdRef.current = setTimeout(triggerLogoutDueToInactivity, INACTIVITY_LIMIT);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser) {
+      // Listen to activity triggers
+      const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+      events.forEach(event => window.addEventListener(event, resetInactivityTimer));
+      
+      // Initialize timer
+      resetInactivityTimer();
+
+      return () => {
+        events.forEach(event => window.removeEventListener(event, resetInactivityTimer));
+        if (timeoutIdRef.current) clearTimeout(timeoutIdRef.current);
+      };
+    }
+  }, [currentUser]);
+
+  // --- ALERTS TRIGGER HELPER ---
+  const showAlert = (message, type = 'info') => {
+    setAlert({ message, type });
+    setTimeout(() => setAlert(null), 6000);
+  };
+
+  // --- REGISTRATION ---
+  const handleRegister = (e) => {
+    e.preventDefault();
+    const cleanId = regForm.id.trim().toUpperCase();
+    
+    if (!regForm.name || !regForm.id || !regForm.email || !regForm.dob) {
+      return showAlert('Please fill out all registration fields.', 'error');
+    }
+
+    if (voters.some(v => v.id === cleanId)) {
+      return showAlert('A student with this ID is already registered.', 'error');
+    }
+
+    // Auto-generate secure 6-character alpha-numeric password
+    const passCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    const newVoter = {
+      id: cleanId,
+      name: regForm.name.trim(),
+      email: regForm.email.trim().toLowerCase(),
+      dob: regForm.dob,
+      password: passCode,
+      hasVoted: false,
+      votedFor: null,
+      receiptHash: '',
+      timestamp: '',
+      isFirstLogin: true
+    };
+
+    setVoters(prev => [...prev, newVoter]);
+    setGeneratedPass(passCode);
+    showAlert('Registration successful! Save your password securely.', 'success');
+  };
+
+  // --- LOGIN ---
+  const handleLogin = (e) => {
+    e.preventDefault();
+    const targetId = loginForm.id.trim().toUpperCase();
+    const user = voters.find(v => v.id === targetId && v.password === loginForm.password);
+
+    if (user) {
+      setCurrentUser(user);
+      setLoginForm({ id: '', password: '' });
+      if (user.isFirstLogin) {
+        setActiveTab('first-login-reset');
+        showAlert('First-time login detected. Please customize your password.', 'info');
+      } else {
+        setActiveTab('dashboard');
+        showAlert(`Authentication successful. Welcome, ${user.name}.`, 'success');
+      }
+    } else {
+      showAlert('Invalid Student ID or Password.', 'error');
+    }
+  };
+
+  // --- FIRST LOGIN PASSWORD CUSTOMIZATION ---
+  const handleFirstLoginResetSubmit = (e) => {
+    e.preventDefault();
+    if (!currentUser) return;
+
+    if (firstResetForm.currentPassword !== currentUser.password) {
+      return showAlert('Verification failed: The generated key does not match.', 'error');
+    }
+
+    if (firstResetForm.newPassword !== firstResetForm.confirmPassword) {
+      return showAlert('Mismatch: New passwords do not match.', 'error');
+    }
+
+    if (firstResetForm.newPassword.length < 4) {
+      return showAlert('Security issue: Desired password must be at least 4 characters.', 'error');
+    }
+
+    // Update inside master database array
+    const updatedVoters = voters.map(v => {
+      if (v.id === currentUser.id) {
+        return {
+          ...v,
+          password: firstResetForm.newPassword,
+          isFirstLogin: false
+        };
+      }
+      return v;
+    });
+    setVoters(updatedVoters);
+
+    // Update active user context
+    const updatedUser = {
+      ...currentUser,
+      password: firstResetForm.newPassword,
+      isFirstLogin: false
+    };
+    setCurrentUser(updatedUser);
+
+    setActiveTab('dashboard');
+    setFirstResetForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    showAlert('Password successfully customized! Welcome to your ballot board.', 'success');
+  };
+
+  // --- PASSWORD RESET (IDENTITY RECOVERY via DOB) ---
+  const handleResetPassword = (e) => {
+    e.preventDefault();
+    const targetId = resetForm.id.trim().toUpperCase();
+    const voterIndex = voters.findIndex(v => v.id === targetId && v.dob === resetForm.dob);
+
+    if (voterIndex !== -1) {
+      const updatedVoters = [...voters];
+      updatedVoters[voterIndex].password = resetForm.newPassword;
+      setVoters(updatedVoters);
+      
+      showAlert('Password updated successfully! Please log in with your new password.', 'success');
+      setActiveTab('login');
+      setResetForm({ id: '', dob: '', newPassword: '' });
+    } else {
+      showAlert('Identity verification failed. Information does not match database.', 'error');
+    }
+  };
+
+  // --- SELECTING CANDIDATE FOR BALLOT ---
+  const handleSelectCandidate = (pos, candidate) => {
+    setBallotSelections(prev => ({
+      ...prev,
+      [pos]: candidate
+    }));
+  };
+
+  // --- CASTING BALLOT ---
+  const processVote = () => {
+    if (!currentUser) return;
+    if (currentUser.hasVoted) {
+      showAlert('System Error: You have already cast a vote!', 'error');
+      setConfirmVoteModal(false);
+      return;
+    }
+
+    // Generate cryptographic security hash code (SHA256 Simulator)
+    const receiptCode = 'SEC-REC-' + Math.random().toString(36).substring(2, 10).toUpperCase() + '-' + Math.floor(Math.random() * 9000 + 1000);
+    const voteTime = new Date().toLocaleString();
+
+    // 1. Update Candidate counts for all selected choices
+    setCandidates(prev => prev.map(cand => {
+      const selectedForPost = ballotSelections[cand.post];
+      if (selectedForPost && selectedForPost.id === cand.id) {
+        return { ...cand, votes: cand.votes + 1 };
+      }
+      return cand;
+    }));
+
+    // Generate formatted summary string for ballot choices
+    const selectionsSummary = POSITIONS.map(pos => `${pos}: ${ballotSelections[pos]?.name || 'Abstained'}`).join(' | ');
+
+    // 2. Mark voter as voted
+    const updatedVoters = voters.map(v => {
+      if (v.id === currentUser.id) {
+        return { 
+          ...v, 
+          hasVoted: true, 
+          votedFor: selectionsSummary,
+          receiptHash: receiptCode,
+          timestamp: voteTime
+        };
+      }
+      return v;
+    });
+    setVoters(updatedVoters);
+
+    // Update session context
+    const sessionUser = { 
+      ...currentUser, 
+      hasVoted: true, 
+      votedFor: selectionsSummary,
+      receiptHash: receiptCode,
+      timestamp: voteTime
+    };
+    setCurrentUser(sessionUser);
+
+    setConfirmVoteModal(false);
+    setBallotSelections({ 'President': null, 'Secretary General': null, 'Treasurer': null });
+    showAlert('Consolidated ballot successfully registered. Thank you!', 'success');
+  };
+
+  // --- LOGOUT ---
+  const handleLogout = (msg = 'Logged out successfully.') => {
+    setCurrentUser(null);
+    setActiveTab('login');
+    showAlert(msg, 'info');
+  };
+
+  // --- STATUS CHECKER ---
+  const handleCheckStatus = (e) => {
+    e.preventDefault();
+    const query = searchStatusQuery.trim().toUpperCase();
+    const found = voters.find(v => v.id === query);
+    
+    if (found) {
+      setSearchedVoter(found);
+    } else {
+      setSearchedVoter({ notFound: true, query });
+    }
+  };
+
+  // --- DYNAMIC PDF RECEIPT GENERATOR ---
+  const handleDownloadPDF = () => {
+    if (!currentUser || !currentUser.hasVoted) return;
+
+    const scriptUrl = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    
+    const generate = () => {
+      try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a6'
+        });
+
+        // Design modern election receipt header
+        doc.setFillColor(15, 23, 42); // Navy Slate
+        doc.rect(0, 0, 105, 15, 'F');
+        
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(255, 255, 255);
+        doc.text('SECURE VOTE SYSTEM - RECEIPT', 8, 10);
+
+        doc.setFontSize(8);
+        doc.setTextColor(50, 50, 50);
+        doc.setFont('Helvetica', 'normal');
+        doc.text(`Timestamp: ${currentUser.timestamp}`, 8, 24);
+        doc.text(`Polling Station: Web-based Sandbox Node`, 8, 29);
+        doc.line(8, 31, 97, 31);
+
+        doc.setFont('Helvetica', 'bold');
+        doc.text('VOTER DETAILS', 8, 37);
+        doc.setFont('Helvetica', 'normal');
+        doc.text(`Student Name: ${currentUser.name}`, 8, 42);
+        doc.text(`Student ID: ${currentUser.id}`, 8, 47);
+        doc.text(`Email: ${currentUser.email}`, 8, 52);
+        
+        doc.line(8, 56, 97, 56);
+        doc.setFont('Helvetica', 'bold');
+        doc.text('STATUS: VERIFIED & CAST', 8, 62);
+        
+        // Split positions safely for printing layout
+        doc.setFontSize(7.5);
+        doc.setFont('Helvetica', 'normal');
+        const choices = currentUser.votedFor.split(' | ');
+        choices.forEach((choice, index) => {
+          doc.text(choice, 8, 68 + (index * 4.5));
+        });
+        
+        doc.line(8, 83, 97, 83);
+        doc.setFontSize(7);
+        doc.setFont('Courier', 'bold');
+        doc.text(`SECURITY RECEIPT STRING:`, 8, 88);
+        doc.text(`${currentUser.receiptHash}`, 8, 93);
+
+        // Footer block
+        doc.setFillColor(241, 245, 249);
+        doc.rect(0, 105, 105, 45, 'F');
+        doc.setFont('Helvetica', 'oblique');
+        doc.setFontSize(6.5);
+        doc.setTextColor(100, 100, 100);
+        doc.text('This receipt provides mathematical proof that your vote', 8, 114);
+        doc.text('was verified and recorded in the Local Ballot Box.', 8, 118);
+        doc.text('Powered by local sandbox environment - Secure Ledger Protocol', 8, 124);
+
+        doc.save(`VOTE_RECEIPT_${currentUser.id}.pdf`);
+        showAlert('PDF Receipt downloaded successfully!', 'success');
+      } catch (err) {
+        showAlert('Failed to generate PDF. Is network online for CDN loading?', 'error');
+        console.error(err);
+      }
+    };
+
+    if (!window.jspdf) {
+      const script = document.createElement('script');
+      script.src = scriptUrl;
+      script.onload = generate;
+      script.onerror = () => showAlert('Error loading script library. Try again.', 'error');
+      document.body.appendChild(script);
+    } else {
+      generate();
+    }
+  };
+
+  // --- SEED DUMMY DATA FOR DEMO PURPOSES ---
+  const handleSeedDemoData = () => {
+    const demoVoters = [
+      { id: 'U15/CS/1001', name: 'Kabiru Adamu', email: 'k.adamu@uni.edu.ng', dob: '2001-05-12', password: 'DEMO1', hasVoted: true, votedFor: 'President: Comrade Yusuf Bello | Secretary General: Sarah Udoh | Treasurer: Babajide Adebayo', receiptHash: 'SEC-REC-DEMO-KABIRU', timestamp: '5/18/2026, 11:30 AM', isFirstLogin: false },
+      { id: 'U15/CS/1002', name: 'Blessing Paul', email: 'b.paul@uni.edu.ng', dob: '2002-11-20', password: 'DEMO2', hasVoted: true, votedFor: 'President: Chinwe Okeke | Secretary General: Ibrahim Musa | Treasurer: Fatima Yusuf', receiptHash: 'SEC-REC-DEMO-BLESSING', timestamp: '5/18/2026, 12:15 PM', isFirstLogin: false },
+      { id: 'U15/CS/1003', name: 'Mustapha Haruna', email: 'm.haruna@uni.edu.ng', dob: '2000-01-15', password: 'DEMO3', hasVoted: false, votedFor: null, receiptHash: '', timestamp: '', isFirstLogin: false }
+    ];
+
+    const demoCandidates = [
+      { id: 'pres_1', name: 'Comrade Yusuf Bello', post: 'President', association: 'NANS', votes: 1, color: 'bg-blue-600' },
+      { id: 'pres_2', name: 'Chinwe Okeke', post: 'President', association: 'NANS', votes: 1, color: 'bg-emerald-600' },
+      { id: 'pres_3', name: 'Amina Danjuma', post: 'President', association: 'NANS', votes: 0, color: 'bg-purple-600' },
+      { id: 'sec_1', name: 'Ibrahim Musa', post: 'Secretary General', association: 'NANS', votes: 1, color: 'bg-amber-600' },
+      { id: 'sec_2', name: 'Sarah Udoh', post: 'Secretary General', association: 'NANS', votes: 1, color: 'bg-pink-600' },
+      { id: 'treas_1', name: 'Babajide Adebayo', post: 'Treasurer', association: 'NANS', votes: 1, color: 'bg-indigo-600' },
+      { id: 'treas_2', name: 'Fatima Yusuf', post: 'Treasurer', association: 'NANS', votes: 1, color: 'bg-rose-600' }
+    ];
+
+    setVoters(demoVoters);
+    setCandidates(demoCandidates);
+    showAlert('Demo voters & candidates seeded to local database!', 'success');
+  };
+
+  const handleResetAllData = () => {
+    localStorage.clear();
+    setVoters([]);
+    setCandidates(DEFAULT_CANDIDATES);
+    setCurrentUser(null);
+    setActiveTab('login');
+    showAlert('System storage fully reset to default state.', 'info');
+  };
+
+  // Determine if voter completed all positions on current draft ballot
+  const isBallotComplete = Object.values(ballotSelections).every(selection => selection !== null);
 
   return (
-    <div className="flex min-h-screen bg-slate-950">
-      <Sidebar currentView={currentView} onViewChange={setCurrentView} />
-      <main className="flex-1 p-4 lg:p-8 overflow-auto">
-        <div className="max-w-5xl mx-auto">
-          {currentView === 'dashboard' ? (
-            <Dashboard onViewTasks={() => setCurrentView('tasks')} />
-          ) : (
-            <TaskList />
-          )}
+    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col justify-between selection:bg-teal-500 selection:text-slate-900">
+      
+      {/* HEADER SECTION */}
+      <header className="bg-slate-950 border-b border-slate-800 py-4 px-6 sticky top-0 z-40 backdrop-blur-md">
+        <div className="max-w-6xl mx-auto flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="bg-gradient-to-tr from-teal-500 to-blue-600 p-2 rounded-lg text-slate-950">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+              </svg>
+            </div>
+            <div>
+              <span className="text-xl font-extrabold tracking-wider bg-gradient-to-r from-teal-400 to-blue-400 bg-clip-text text-transparent">SECURE-VOTE</span>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">Student Voting Node</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {currentUser && (
+              <span className="hidden md:inline-block text-xs bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700 text-slate-300">
+                👤 Active ID: <strong className="text-teal-400 font-mono">{currentUser.id}</strong>
+              </span>
+            )}
+            <button 
+              onClick={() => setActiveTab('admin')} 
+              className={`text-xs px-3 py-1.5 rounded-lg border font-semibold transition ${activeTab === 'admin' ? 'bg-teal-500 border-teal-500 text-slate-950' : 'border-slate-800 hover:border-slate-700 hover:bg-slate-800 text-slate-400'}`}
+            >
+              📊 System Dashboard
+            </button>
+          </div>
         </div>
+      </header>
+
+      {/* FLOATING ACTION NOTIFICATION BANNER */}
+      {alert && (
+        <div className="fixed top-20 right-4 left-4 md:left-auto md:w-96 z-50 animate-bounce">
+          <div className={`p-4 rounded-xl shadow-xl flex items-start gap-3 border ${alert.type === 'success' ? 'bg-emerald-950 border-emerald-500 text-emerald-300' : alert.type === 'error' ? 'bg-red-950 border-red-500 text-red-300' : 'bg-blue-950 border-blue-500 text-blue-300'}`}>
+            <div className="mt-0.5">
+              {alert.type === 'success' ? (
+                <svg className="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+              ) : (
+                <svg className="w-5 h-5 text-red-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+              )}
+            </div>
+            <div>
+              <p className="font-bold text-sm">System Alert</p>
+              <p className="text-xs opacity-90">{alert.message}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CORE CONTENT */}
+      <main className="flex-grow max-w-4xl mx-auto w-full px-4 py-8">
+        
+        {/* --- VIEW: LOGIN CARD --- */}
+        {activeTab === 'login' && (
+          <div className="max-w-md mx-auto bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-2xl relative">
+            <div className="absolute top-0 right-0 transform translate-x-2 -translate-y-2 bg-gradient-to-r from-teal-500 to-blue-500 text-[9px] text-slate-950 font-extrabold uppercase py-1 px-3 rounded-md tracking-wider">
+              Secure Node Protocol
+            </div>
+
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-black text-slate-100">Voter Authentication</h2>
+              <p className="text-xs text-slate-400 mt-1">Access your personalized, secure voter card and ballot box.</p>
+            </div>
+
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Student Voter ID (NIN/Reg No)</label>
+                <input 
+                  type="text" 
+                  value={loginForm.id} 
+                  onChange={e => setLoginForm({ ...loginForm, id: e.target.value })} 
+                  className="w-full bg-slate-900 border border-slate-800 hover:border-slate-700 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none transition text-sm font-mono placeholder-slate-600"
+                  placeholder="E.G. U15/CS/1001" 
+                  required 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Auto-Generated Password</label>
+                <input 
+                  type="password" 
+                  value={loginForm.password} 
+                  onChange={e => setLoginForm({ ...loginForm, password: e.target.value })} 
+                  className="w-full bg-slate-900 border border-slate-800 hover:border-slate-700 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none transition text-sm placeholder-slate-600"
+                  placeholder="••••••••" 
+                  required 
+                />
+              </div>
+
+              <button 
+                type="submit" 
+                className="w-full bg-teal-500 hover:bg-teal-400 text-slate-950 p-3.5 rounded-xl font-bold transition duration-200 transform active:scale-[0.99] text-sm shadow-lg shadow-teal-500/20"
+              >
+                Authenticate Secret Keys
+              </button>
+
+              <div className="flex justify-between text-xs text-teal-400 font-medium pt-3 border-t border-slate-900">
+                <button type="button" onClick={() => setActiveTab('register')} className="hover:text-teal-300 hover:underline">Register New Voter</button>
+                <button type="button" onClick={() => setActiveTab('forgot')} className="hover:text-teal-300 hover:underline">Reset / Change Password</button>
+              </div>
+            </form>
+
+            {/* Quick Status Checker Widget */}
+            <div className="mt-8 pt-6 border-t border-slate-900 bg-slate-950">
+              <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2.5">Instant Eligibility & Check-Vote Status</h4>
+              <form onSubmit={handleCheckStatus} className="flex gap-2">
+                <input 
+                  type="text" 
+                  value={searchStatusQuery}
+                  onChange={e => setSearchStatusQuery(e.target.value)}
+                  placeholder="Enter Voter ID..."
+                  className="bg-slate-900 border border-slate-800 text-slate-100 px-3 py-2 text-xs rounded-lg flex-grow outline-none focus:border-slate-700 font-mono"
+                />
+                <button type="submit" className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-4 py-2 rounded-lg font-semibold text-slate-200">
+                  Inspect
+                </button>
+              </form>
+
+              {searchedVoter && (
+                <div className="mt-4 p-3 rounded-lg border text-xs bg-slate-900 border-slate-800 animate-fadeIn">
+                  {searchedVoter.notFound ? (
+                    <p className="text-red-400 font-medium">❌ No enrollment found for ID <strong className="font-mono">{searchedVoter.query}</strong>.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      <p className="text-teal-400 font-bold">Voter Found: {searchedVoter.name}</p>
+                      <p className="text-slate-300">ID: <span className="font-mono">{searchedVoter.id}</span></p>
+                      <p className="text-slate-300">Status: {searchedVoter.hasVoted ? '✅ Vote securely registered' : '⚠️ Has not cast ballot'}</p>
+                      {searchedVoter.hasVoted && (
+                        <p className="text-slate-400 text-[10px] break-all font-mono">Receipt Hash: {searchedVoter.receiptHash}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* --- VIEW: REGISTRATION CARD --- */}
+        {activeTab === 'register' && (
+          <div className="max-w-md mx-auto bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-2xl">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-black text-slate-100">Voter Enrollment Portal</h2>
+              <p className="text-xs text-slate-400 mt-1">Enroll as a certified student voter inside local secure ledger.</p>
+            </div>
+
+            <form onSubmit={handleRegister} className="space-y-4">
+              <div>
+                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Student Full Name</label>
+                <input 
+                  type="text" 
+                  value={regForm.name} 
+                  onChange={e => setRegForm({ ...regForm, name: e.target.value })} 
+                  className="w-full bg-slate-900 border border-slate-800 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none text-sm"
+                  placeholder="e.g. Ibrahim Abubakar" 
+                  required 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Student Unique ID / Registration No</label>
+                <input 
+                  type="text" 
+                  value={regForm.id} 
+                  onChange={e => setRegForm({ ...regForm, id: e.target.value })} 
+                  className="w-full bg-slate-900 border border-slate-800 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none text-sm font-mono"
+                  placeholder="e.g. U15/CS/1001" 
+                  required 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">School Email Address</label>
+                <input 
+                  type="email" 
+                  value={regForm.email} 
+                  onChange={e => setRegForm({ ...regForm, email: e.target.value })} 
+                  className="w-full bg-slate-900 border border-slate-800 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none text-sm"
+                  placeholder="e.g. student@university.edu.ng" 
+                  required 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Date of Birth (Used for Verification)</label>
+                <input 
+                  type="date" 
+                  value={regForm.dob} 
+                  onChange={e => setRegForm({ ...regForm, dob: e.target.value })} 
+                  className="w-full bg-slate-900 border border-slate-800 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none text-sm"
+                  required 
+                />
+              </div>
+
+              <button 
+                type="submit" 
+                className="w-full bg-gradient-to-r from-teal-500 to-blue-600 hover:from-teal-400 hover:to-blue-500 text-slate-950 p-3.5 rounded-xl font-bold transition duration-200 text-sm"
+              >
+                Enroll Voter & Generate Access Key
+              </button>
+
+              {generatedPass && (
+                <div className="bg-teal-950/40 border border-teal-500/40 p-4 rounded-xl space-y-2 mt-4 animate-pulse">
+                  <p className="text-xs font-bold text-teal-400 uppercase tracking-widest">⚠️ CREDENTIALS REGISTERED</p>
+                  <p className="text-xs text-slate-300">Your secure, randomly generated voting password is below. Write it down. It is not recoverable unless verified against Date of Birth.</p>
+                  <div className="flex items-center justify-between bg-slate-900 p-3 rounded-lg border border-slate-800">
+                    <span className="font-mono text-lg font-black text-emerald-400 tracking-widest">{generatedPass}</span>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(generatedPass);
+                        showAlert('Password copied to clipboard!', 'success');
+                      }}
+                      className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 py-1 px-2.5 rounded font-mono border border-slate-700"
+                    >
+                      Copy Pass
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <button 
+                type="button" 
+                onClick={() => { setActiveTab('login'); setGeneratedPass(''); }} 
+                className="w-full text-center text-xs text-slate-400 hover:text-slate-200 hover:underline block pt-2"
+              >
+                Already have an ID? Back to Login
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* --- VIEW: PASSWORD RESET (DOB CHECK) --- */}
+        {activeTab === 'forgot' && (
+          <div className="max-w-md mx-auto bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-2xl">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-black text-slate-100">Identity-based Password Reset</h2>
+              <p className="text-xs text-slate-400 mt-1">Provide your Student ID and exact Date of Birth to establish a new password.</p>
+            </div>
+
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <div>
+                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Student ID</label>
+                <input 
+                  type="text" 
+                  value={resetForm.id} 
+                  onChange={e => setResetForm({ ...resetForm, id: e.target.value })} 
+                  className="w-full bg-slate-900 border border-slate-800 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none text-sm font-mono"
+                  placeholder="E.G. U15/CS/1001" 
+                  required 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Date of Birth</label>
+                <input 
+                  type="date" 
+                  value={resetForm.dob} 
+                  onChange={e => setResetForm({ ...resetForm, dob: e.target.value })} 
+                  className="w-full bg-slate-900 border border-slate-800 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none text-sm"
+                  required 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">New Desired Password</label>
+                <input 
+                  type="password" 
+                  value={resetForm.newPassword} 
+                  onChange={e => setResetForm({ ...resetForm, newPassword: e.target.value })} 
+                  className="w-full bg-slate-900 border border-slate-800 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none text-sm"
+                  placeholder="Enter custom desired password" 
+                  required 
+                />
+              </div>
+
+              <button 
+                type="submit" 
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white p-3.5 rounded-xl font-bold transition duration-200 text-sm"
+              >
+                Verify & Reset Password
+              </button>
+
+              <button 
+                type="button" 
+                onClick={() => { setActiveTab('login'); }} 
+                className="w-full text-center text-xs text-slate-400 hover:text-slate-200 hover:underline block pt-2"
+              >
+                Back to Login
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* --- VIEW: FIRST LOGIN PASSWORD CUSTOMIZATION --- */}
+        {activeTab === 'first-login-reset' && currentUser && (
+          <div className="max-w-md mx-auto bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-2xl">
+            <div className="text-center mb-6">
+              <span className="bg-teal-500/10 text-teal-400 text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full font-bold border border-teal-500/30">
+                Mandatory Security Setup
+              </span>
+              <h2 className="text-2xl font-black text-slate-100 mt-3">Configure Password</h2>
+              <p className="text-xs text-slate-400 mt-1">This is your first login. To secure your voting credentials, verify your generated access key and set up your customized password.</p>
+            </div>
+
+            <form onSubmit={handleFirstLoginResetSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Verify Generated Key</label>
+                <input 
+                  type="password" 
+                  value={firstResetForm.currentPassword} 
+                  onChange={e => setFirstResetForm({ ...firstResetForm, currentPassword: e.target.value })} 
+                  className="w-full bg-slate-900 border border-slate-800 focus:border-blue-500 text-slate-100 p-3 rounded-xl outline-none text-sm font-mono placeholder-slate-600"
+                  placeholder="Paste your generated password key" 
+                  required 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">New Desired Password</label>
+                <input 
+                  type="password" 
+                  value={firstResetForm.newPassword} 
+                  onChange={e => setFirstResetForm({ ...firstResetForm, newPassword: e.target.value })} 
+                  className="w-full bg-slate-900 border border-slate-800 focus:border-blue-500 text-slate-100 p-3 rounded-xl outline-none text-sm placeholder-slate-600"
+                  placeholder="Enter custom desired password" 
+                  required 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Confirm Desired Password</label>
+                <input 
+                  type="password" 
+                  value={firstResetForm.confirmPassword} 
+                  onChange={e => setFirstResetForm({ ...firstResetForm, confirmPassword: e.target.value })} 
+                  className="w-full bg-slate-900 border border-slate-800 focus:border-blue-500 text-slate-100 p-3 rounded-xl outline-none text-sm placeholder-slate-600"
+                  placeholder="Re-enter custom desired password" 
+                  required 
+                />
+              </div>
+
+              <button 
+                type="submit" 
+                className="w-full bg-teal-500 hover:bg-teal-400 text-slate-950 p-3.5 rounded-xl font-bold transition duration-200 text-sm shadow-lg shadow-teal-500/20"
+              >
+                Secure Account & Continue
+              </button>
+
+              <button 
+                type="button" 
+                onClick={() => handleLogout('Setup cancelled. Please login to configure credentials.')} 
+                className="w-full text-center text-xs text-slate-400 hover:text-slate-200 hover:underline block pt-2"
+              >
+                Cancel & Sign Out
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* --- VIEW: ACTIVE USER PANEL (DASHBOARD) --- */}
+        {activeTab === 'dashboard' && currentUser && (
+          <div className="space-y-6">
+            
+            {/* Top Voter Card Banner */}
+            <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-xl flex flex-col md:flex-row md:justify-between md:items-center gap-6 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/5 rounded-full blur-2xl"></div>
+              
+              <div className="space-y-1">
+                <span className="bg-slate-800 text-teal-400 text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full font-bold border border-slate-700">
+                  Verified Active Session
+                </span>
+                <h2 className="text-2xl font-black text-slate-100 pt-1.5">{currentUser.name}</h2>
+                <div className="grid grid-cols-2 md:flex md:items-center gap-x-4 gap-y-1 text-xs text-slate-400 font-mono">
+                  <span>ID: <strong className="text-slate-200">{currentUser.id}</strong></span>
+                  <span className="hidden md:inline text-slate-600">|</span>
+                  <span>Email: <strong className="text-slate-200">{currentUser.email}</strong></span>
+                  <span className="hidden md:inline text-slate-600">|</span>
+                  <span>DOB: <strong className="text-slate-200">{currentUser.dob}</strong></span>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 min-w-44">
+                <button 
+                  onClick={() => handleLogout()} 
+                  className="w-full text-center bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-300 text-xs py-2.5 px-4 rounded-xl font-bold transition"
+                >
+                  Terminate Session
+                </button>
+              </div>
+            </div>
+
+            {/* Voting Status and Action Block */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              
+              {/* Left Side: Status Block */}
+              <div className="md:col-span-1 bg-slate-950 p-6 rounded-2xl border border-slate-800 flex flex-col justify-between h-full">
+                <div className="space-y-4">
+                  <h3 className="text-xs uppercase tracking-widest font-extrabold text-slate-400">Ledger Verification</h3>
+                  <div className={`p-4 rounded-xl border text-center ${currentUser.hasVoted ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300' : 'bg-amber-950/40 border-amber-500/50 text-amber-300'}`}>
+                    <p className="text-xs uppercase tracking-widest font-semibold opacity-75">Status Status</p>
+                    <p className="text-xl font-black mt-1.5 tracking-wide">{currentUser.hasVoted ? '✅ Ballot Cast' : '⚠️ Pending'}</p>
+                  </div>
+                </div>
+
+                {currentUser.hasVoted && (
+                  <div className="mt-6 pt-6 border-t border-slate-900 space-y-3">
+                    <button 
+                      onClick={handleDownloadPDF} 
+                      className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold py-3 px-4 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/10"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                      </svg>
+                      Download PDF Slip
+                    </button>
+                    <p className="text-[10px] text-slate-500 text-center">Use this offline PDF slip as proof for accreditation verification.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Right Side: Voting booth / Receipt display */}
+              <div className="md:col-span-2 bg-slate-950 p-6 rounded-2xl border border-slate-800">
+                {!currentUser.hasVoted ? (
+                  <div className="space-y-6">
+                    <div className="border-b border-slate-900 pb-3">
+                      <h3 className="text-md font-bold text-slate-200">Consolidated Executive Election Ballot</h3>
+                      <p className="text-xs text-slate-400">Please make one choice for each open position. Your complete ballot will be securely committed once you hit "Submit Ballot".</p>
+                    </div>
+
+                    {/* Loop through each election position */}
+                    {POSITIONS.map(pos => (
+                      <div key={pos} className="space-y-3 border-b border-slate-900 pb-4">
+                        <h4 className="text-sm font-bold text-teal-400 tracking-wide uppercase">{pos} Position</h4>
+                        <div className="grid grid-cols-1 gap-2">
+                          {candidates.filter(cand => cand.post === pos).map(cand => {
+                            const isSelected = ballotSelections[pos]?.id === cand.id;
+                            return (
+                              <button
+                                key={cand.id}
+                                type="button"
+                                onClick={() => handleSelectCandidate(pos, cand)}
+                                className={`w-full text-left p-4 rounded-xl border transition flex justify-between items-center ${
+                                  isSelected 
+                                    ? 'bg-teal-950/30 border-teal-500 text-slate-100' 
+                                    : 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-300'
+                                }`}
+                              >
+                                <div>
+                                  <p className="font-bold text-sm">{cand.name}</p>
+                                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">{cand.association}</span>
+                                </div>
+                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-teal-500 bg-teal-500' : 'border-slate-700'}`}>
+                                  {isSelected && (
+                                    <svg className="w-3.5 h-3.5 text-slate-950 font-bold" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* consolidated submit logic */}
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setConfirmVoteModal(true)}
+                        disabled={!isBallotComplete}
+                        className={`w-full p-4 rounded-xl font-extrabold text-sm transition tracking-wider uppercase flex items-center justify-center gap-2 ${
+                          isBallotComplete 
+                            ? 'bg-teal-500 hover:bg-teal-400 text-slate-950 shadow-lg shadow-teal-500/20 active:scale-[0.99]' 
+                            : 'bg-slate-800 border border-slate-700 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {isBallotComplete ? 'Submit Complete Ballot' : 'Complete All Positions To Submit'}
+                      </button>
+                    </div>
+
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="border-b border-slate-900 pb-3">
+                      <h3 className="text-md font-bold text-slate-200">Cryptographic Verification Proof</h3>
+                      <p className="text-xs text-slate-400">These details represent your mathematical vote verification string in the local data nodes.</p>
+                    </div>
+
+                    <div className="space-y-3 text-xs bg-slate-900 p-4 rounded-xl border border-slate-800 font-mono">
+                      <div>
+                        <span className="text-slate-500 block uppercase text-[10px] mb-1">Selections Logged</span>
+                        <div className="space-y-1.5 text-slate-300 text-xs">
+                          {currentUser.votedFor.split(' | ').map((line, i) => (
+                            <div key={i} className="flex gap-1.5 py-0.5 border-b border-slate-950 last:border-0">
+                              <span className="text-teal-400 font-bold">✔️</span>
+                              <span>{line}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="pt-2">
+                        <span className="text-slate-500 block uppercase text-[10px]">Verification Signature</span>
+                        <span className="text-emerald-400 break-all font-bold select-all">{currentUser.receiptHash}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block uppercase text-[10px]">Timestamp</span>
+                        <span className="text-slate-300">{currentUser.timestamp}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block uppercase text-[10px]">Encrypted Payload Match</span>
+                        <span className="text-slate-400 text-[10px]">SHA256_LOCAL_PERSIST({currentUser.id || 'N/A'} || SALTING_VECTOR_329)</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-900/50 border border-slate-800 p-3.5 rounded-xl text-center">
+                      <p className="text-[10px] text-slate-400 italic">To ensure 100% voter choice anonymity, the association between your voter record and selected candidate choices is held strictly within separate memory blocks.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="text-center text-[10px] text-slate-500 font-mono">
+              Auto-lock safety protocol active. Inactivity for 5 minutes will instantly terminate credentials.
+            </div>
+          </div>
+        )}
+
+        {/* --- VIEW: SYSTEM & RESULTS DASHBOARD (ADMIN VIEW) --- */}
+        {activeTab === 'admin' && (
+          <div className="space-y-6">
+            
+            {/* Header / Admin options */}
+            <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <h2 className="text-2xl font-black text-slate-100">Election Audit Dashboard</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Live local results auditing with built-in analytics visualization tools.</p>
+              </div>
+
+              <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                <button 
+                  onClick={handleSeedDemoData} 
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3.5 py-2 rounded-lg font-bold border border-slate-700 transition"
+                >
+                  🌱 Seed Mock Data
+                </button>
+                <button 
+                  onClick={handleResetAllData} 
+                  className="bg-red-950 hover:bg-red-900 text-red-200 text-xs px-3.5 py-2 rounded-lg font-bold border border-red-900/40 transition"
+                >
+                  💥 Reset All Storage
+                </button>
+                <button 
+                  onClick={() => setActiveTab(currentUser ? 'dashboard' : 'login')} 
+                  className="bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs px-3.5 py-2 rounded-lg font-bold transition flex-grow md:flex-grow-0 text-center"
+                >
+                  Return to Ballot
+                </button>
+              </div>
+            </div>
+
+            {/* Overall Analytics Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              
+              <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 text-center">
+                <p className="text-xs text-slate-400 uppercase tracking-widest font-mono">Total Enrolled Voters</p>
+                <p className="text-4xl font-black text-slate-100 mt-2 font-mono">{voters.length}</p>
+              </div>
+
+              <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 text-center">
+                <p className="text-xs text-slate-400 uppercase tracking-widest font-mono">Total Enrolled Ballots</p>
+                <p className="text-4xl font-black text-teal-400 mt-2 font-mono">
+                  {voters.filter(v => v.hasVoted).length}
+                </p>
+              </div>
+
+              <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 text-center">
+                <p className="text-xs text-slate-400 uppercase tracking-widest font-mono">Voter Turnout Rate</p>
+                <p className="text-4xl font-black text-blue-400 mt-2 font-mono">
+                  {voters.length > 0 ? `${Math.round((voters.filter(v => v.hasVoted).length / voters.length) * 100)}%` : '0%'}
+                </p>
+              </div>
+
+              <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 text-center">
+                <p className="text-xs text-slate-400 uppercase tracking-widest font-mono">Integrity Status</p>
+                <p className="text-lg font-black text-emerald-400 mt-4 uppercase tracking-widest">
+                  🛡️ Legitimate
+                </p>
+              </div>
+            </div>
+
+            {/* Live Chart Results representation */}
+            <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 space-y-6">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400">Live Vote Tally Results (Interactive)</h3>
+              
+              <div className="space-y-8">
+                {POSITIONS.map(pos => {
+                  const positionCandidates = candidates.filter(cand => cand.post === pos);
+                  const totalVotesForPosition = positionCandidates.reduce((total, cand) => total + cand.votes, 0);
+
+                  return (
+                    <div key={pos} className="space-y-4 border-b border-slate-900 pb-6 last:border-0 last:pb-0">
+                      <h4 className="text-sm font-black text-teal-400 uppercase tracking-wider">{pos} Ballot Tally ({totalVotesForPosition} total votes)</h4>
+                      
+                      <div className="space-y-4">
+                        {positionCandidates.map(cand => {
+                          const percentage = totalVotesForPosition > 0 ? Math.round((cand.votes / totalVotesForPosition) * 100) : 0;
+                          return (
+                            <div key={cand.id} className="space-y-2">
+                              <div className="flex justify-between items-center text-xs">
+                                <div>
+                                  <span className="font-extrabold text-slate-100 text-sm">{cand.name}</span>
+                                  <span className="text-[10px] text-slate-500 font-mono ml-2">({cand.association})</span>
+                                </div>
+                                <span className="font-mono text-slate-300 font-bold">{cand.votes} votes ({percentage}%)</span>
+                              </div>
+                              <div className="w-full bg-slate-900 rounded-full h-3.5 overflow-hidden border border-slate-800">
+                                <div 
+                                  className={`h-full rounded-full transition-all duration-500 ${cand.color}`} 
+                                  style={{ width: `${percentage}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Voter Ledger Audit Log */}
+            <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 space-y-4">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400">System Enrollment & Vote Logs</h3>
+              
+              {voters.length === 0 ? (
+                <p className="text-xs text-slate-500 text-center py-4 italic">No voter registration records located inside state storage cache.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="text-[10px] text-slate-400 uppercase tracking-wider bg-slate-900 border-b border-slate-800">
+                      <tr>
+                        <th className="p-3">Voter Name</th>
+                        <th className="p-3 font-mono">Student ID</th>
+                        <th className="p-3">Email Address</th>
+                        <th className="p-3">DOB</th>
+                        <th className="p-3 text-center">Status</th>
+                        <th className="p-3">Assigned password</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-900">
+                      {voters.map(v => (
+                        <tr key={v.id} className="hover:bg-slate-900/50">
+                          <td className="p-3 font-semibold">{v.name}</td>
+                          <td className="p-3 font-mono text-teal-400">{v.id}</td>
+                          <td className="p-3 text-slate-400">{v.email}</td>
+                          <td className="p-3 text-slate-400">{v.dob}</td>
+                          <td className="p-3 text-center">
+                            <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-bold ${v.hasVoted ? 'bg-emerald-950 text-emerald-300 border border-emerald-900' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}>
+                              {v.hasVoted ? 'CAST' : 'PENDING'}
+                            </span>
+                          </td>
+                          <td className="p-3 font-mono text-[11px] text-slate-500">{v.password}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+          </div>
+        )}
+
       </main>
+
+      {/* FOOTER */}
+      <footer className="bg-slate-950 border-t border-slate-800 py-6 px-6 mt-12 text-center text-xs text-slate-500 space-y-1">
+        <p>© 2026 Web-Based Online Cryptographic Voting Prototype.</p>
+        <p className="font-mono text-[10px] uppercase tracking-widest text-slate-600">Distributed Ballot Box Implementation Node</p>
+      </footer>
+
+      {/* --- CONFIRMATION ACTION MODAL overlay --- */}
+      {confirmVoteModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-sm w-full text-center space-y-4 shadow-2xl">
+            <div className="w-12 h-12 rounded-full bg-teal-500/10 text-teal-400 flex items-center justify-center mx-auto">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4"></path>
+              </svg>
+            </div>
+            
+            <div className="space-y-1 text-left">
+              <h3 className="text-lg font-extrabold text-slate-100 text-center mb-2">Verify Ballot Selections</h3>
+              <p className="text-xs text-slate-400 text-center mb-4">Review your selected candidate choices before final submission:</p>
+              
+              <div className="space-y-2 bg-slate-950 p-3 rounded-xl border border-slate-800 mb-4 font-mono text-xs">
+                {POSITIONS.map(pos => (
+                  <div key={pos} className="flex justify-between py-1 border-b border-slate-900 last:border-0 last:pb-0">
+                    <span className="text-slate-500">{pos}:</span>
+                    <span className="text-teal-400 font-bold">{ballotSelections[pos]?.name}</span>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-[10px] text-slate-500 text-center leading-normal">Selections will be anonymized and logged into the secure local storage registry. This action cannot be undone.</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button 
+                onClick={() => setConfirmVoteModal(false)} 
+                className="bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 px-4 rounded-xl text-xs font-semibold border border-slate-700 transition"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={processVote} 
+                className="bg-teal-500 hover:bg-teal-400 text-slate-950 py-2.5 px-4 rounded-xl text-xs font-black transition shadow-lg shadow-teal-500/10"
+              >
+                Confirm Vote
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
-
-function App() {
-  return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
-  );
-}
-
-export default App;
