@@ -610,12 +610,20 @@ export default function App() {
                   {searchedVoter.notFound ? (
                     <p className="text-red-500 font-medium">❌ No enrollment found for ID <strong className="font-mono">{searchedVoter.query}</strong>.</p>
                   ) : (
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       <p className="text-teal-500 font-bold">Voter Found: {searchedVoter.name}</p>
                       <p className={s.textMain}>ID: <span className="font-mono">{searchedVoter.id}</span></p>
-                      <p className={s.textMain}>Status: {searchedVoter.hasVoted ? '✅ Vote securely registered' : '⚠️ Has not cast ballot'}</p>
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className={s.textMuted}>Ballot Record:</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider ${searchedVoter.hasVoted ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/30' : 'bg-amber-950/60 text-amber-300 border border-amber-500/30'}`}>
+                          {searchedVoter.hasVoted ? 'CASTED' : 'NOT CASTED'}
+                        </span>
+                      </div>
                       {searchedVoter.hasVoted && (
-                        <p className={`text-[10px] break-all font-mono ${s.textMuted}`}>Receipt Hash: {searchedVoter.receiptHash}</p>
+                        <>
+                          <p className={s.textMain}>Timestamp: <span className="font-semibold text-teal-400 font-mono">{searchedVoter.timestamp}</span></p>
+                          <p className={`text-[10px] break-all font-mono ${s.textMuted}`}>Receipt Hash: {searchedVoter.receiptHash}</p>
+                        </>
                       )}
                     </div>
                   )}
