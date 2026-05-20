@@ -35,6 +35,12 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
+  // Theme support ('dark' or 'light')
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('evote_theme');
+    return saved ? saved : 'dark';
+  });
+
   // Navigation states: 'login' | 'register' | 'forgot' | 'first-login-reset' | 'dashboard' | 'admin'
   const [activeTab, setActiveTab] = useState(currentUser ? 'dashboard' : 'login');
 
@@ -68,6 +74,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('evote_candidates', JSON.stringify(candidates));
   }, [candidates]);
+
+  useEffect(() => {
+    localStorage.setItem('evote_theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     if (currentUser) {
@@ -436,11 +446,29 @@ export default function App() {
   // Determine if voter completed all positions on current draft ballot
   const isBallotComplete = Object.values(ballotSelections).every(selection => selection !== null);
 
+  // --- DYNAMIC ADAPTIVE LIGHT/DARK STYLING DICTIONARY ---
+  const isDark = theme === 'dark';
+  const s = {
+    bgMain: isDark ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900',
+    bgCard: isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-200 shadow-md',
+    bgInput: isDark ? 'bg-slate-900 border-slate-800 focus:border-teal-500 text-slate-100' : 'bg-slate-50 border-slate-200 focus:border-teal-500 text-slate-900',
+    textMain: isDark ? 'text-slate-100' : 'text-slate-800',
+    textMuted: isDark ? 'text-slate-400' : 'text-slate-500',
+    borderMain: isDark ? 'border-slate-800' : 'border-slate-200',
+    borderSub: isDark ? 'border-slate-900' : 'border-slate-100',
+    bgHeader: isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-200 shadow-sm',
+    bgBanner: isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700',
+    bgButtonSec: isDark ? 'bg-slate-900 border-slate-800 hover:border-slate-700 hover:bg-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-700',
+    bgAlertSuccess: isDark ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-800',
+    bgAlertPending: isDark ? 'bg-amber-950/40 border-amber-500/50 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-800',
+    bgTableHead: isDark ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500',
+  };
+
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col justify-between selection:bg-teal-500 selection:text-slate-900">
+    <div className={`min-h-screen ${s.bgMain} flex flex-col justify-between selection:bg-teal-500 selection:text-slate-900 transition-colors duration-200`}>
       
       {/* HEADER SECTION */}
-      <header className="bg-slate-950 border-b border-slate-800 py-4 px-6 sticky top-0 z-40 backdrop-blur-md">
+      <header className={`${s.bgHeader} border-b py-4 px-6 sticky top-0 z-40 backdrop-blur-md transition-colors duration-200`}>
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="bg-gradient-to-tr from-teal-500 to-blue-600 p-2 rounded-lg text-slate-950">
@@ -450,19 +478,38 @@ export default function App() {
             </div>
             <div>
               <span className="text-xl font-extrabold tracking-wider bg-gradient-to-r from-teal-400 to-blue-400 bg-clip-text text-transparent">SECURE-VOTE</span>
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">Student Voting Node</p>
+              <p className={`text-[10px] ${s.textMuted} uppercase tracking-widest font-mono`}>Student Voting Node</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Theme Toggle Button */}
+            <button
+              onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+              className={`p-2 rounded-lg border transition-all ${s.bgButtonSec}`}
+              title={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}
+            >
+              {isDark ? (
+                // Sun Icon
+                <svg className="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.46 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 100 2h1z" clipRule="evenodd" />
+                </svg>
+              ) : (
+                // Moon Icon
+                <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+                </svg>
+              )}
+            </button>
+
             {currentUser && (
-              <span className="hidden md:inline-block text-xs bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700 text-slate-300">
+              <span className={`hidden md:inline-block text-xs px-3 py-1.5 rounded-full border ${s.bgBanner}`}>
                 👤 Active ID: <strong className="text-teal-400 font-mono">{currentUser.id}</strong>
               </span>
             )}
             <button 
               onClick={() => setActiveTab('admin')} 
-              className={`text-xs px-3 py-1.5 rounded-lg border font-semibold transition ${activeTab === 'admin' ? 'bg-teal-500 border-teal-500 text-slate-950' : 'border-slate-800 hover:border-slate-700 hover:bg-slate-800 text-slate-400'}`}
+              className={`text-xs px-3 py-1.5 rounded-lg border font-semibold transition ${activeTab === 'admin' ? 'bg-teal-500 border-teal-500 text-slate-950' : s.bgButtonSec}`}
             >
               📊 System Dashboard
             </button>
@@ -494,36 +541,36 @@ export default function App() {
         
         {/* --- VIEW: LOGIN CARD --- */}
         {activeTab === 'login' && (
-          <div className="max-w-md mx-auto bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-2xl relative">
+          <div className={`max-w-md mx-auto p-6 rounded-2xl border relative ${s.bgCard} transition-colors duration-200`}>
             <div className="absolute top-0 right-0 transform translate-x-2 -translate-y-2 bg-gradient-to-r from-teal-500 to-blue-500 text-[9px] text-slate-950 font-extrabold uppercase py-1 px-3 rounded-md tracking-wider">
               Secure Node Protocol
             </div>
 
             <div className="text-center mb-6">
-              <h2 className="text-2xl font-black text-slate-100">Voter Authentication</h2>
-              <p className="text-xs text-slate-400 mt-1">Access your personalized, secure voter card and ballot box.</p>
+              <h2 className={`text-2xl font-black ${s.textMain}`}>Voter Authentication</h2>
+              <p className={`text-xs mt-1 ${s.textMuted}`}>Access your personalized, secure voter card and ballot box.</p>
             </div>
 
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
-                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Student Voter ID (NIN/Reg No)</label>
+                <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student Voter ID (NIN/Reg No)</label>
                 <input 
                   type="text" 
                   value={loginForm.id} 
                   onChange={e => setLoginForm({ ...loginForm, id: e.target.value })} 
-                  className="w-full bg-slate-900 border border-slate-800 hover:border-slate-700 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none transition text-sm font-mono placeholder-slate-600"
+                  className={`w-full p-3 rounded-xl outline-none transition text-sm font-mono placeholder-slate-400 border ${s.bgInput}`}
                   placeholder="E.G. U15/CS/1001" 
                   required 
                 />
               </div>
 
               <div>
-                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Auto-Generated Password</label>
+                <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Auto-Generated Password</label>
                 <input 
                   type="password" 
                   value={loginForm.password} 
                   onChange={e => setLoginForm({ ...loginForm, password: e.target.value })} 
-                  className="w-full bg-slate-900 border border-slate-800 hover:border-slate-700 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none transition text-sm placeholder-slate-600"
+                  className={`w-full p-3 rounded-xl outline-none transition text-sm placeholder-slate-400 border ${s.bgInput}`}
                   placeholder="••••••••" 
                   required 
                 />
@@ -536,39 +583,39 @@ export default function App() {
                 Authenticate Secret Keys
               </button>
 
-              <div className="flex justify-between text-xs text-teal-400 font-medium pt-3 border-t border-slate-900">
-                <button type="button" onClick={() => setActiveTab('register')} className="hover:text-teal-300 hover:underline">Register New Voter</button>
-                <button type="button" onClick={() => setActiveTab('forgot')} className="hover:text-teal-300 hover:underline">Reset / Change Password</button>
+              <div className={`flex justify-between text-xs text-teal-400 font-medium pt-3 border-t ${s.borderSub}`}>
+                <button type="button" onClick={() => setActiveTab('register')} className="hover:text-teal-500 hover:underline transition">Register New Voter</button>
+                <button type="button" onClick={() => setActiveTab('forgot')} className="hover:text-teal-500 hover:underline transition">Reset / Change Password</button>
               </div>
             </form>
 
             {/* Quick Status Checker Widget */}
-            <div className="mt-8 pt-6 border-t border-slate-900 bg-slate-950">
-              <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2.5">Instant Eligibility & Check-Vote Status</h4>
+            <div className={`mt-8 pt-6 border-t ${s.borderSub}`}>
+              <h4 className={`text-xs font-bold uppercase tracking-widest mb-2.5 ${s.textMuted}`}>Instant Eligibility & Check-Vote Status</h4>
               <form onSubmit={handleCheckStatus} className="flex gap-2">
                 <input 
                   type="text" 
                   value={searchStatusQuery}
                   onChange={e => setSearchStatusQuery(e.target.value)}
                   placeholder="Enter Voter ID..."
-                  className="bg-slate-900 border border-slate-800 text-slate-100 px-3 py-2 text-xs rounded-lg flex-grow outline-none focus:border-slate-700 font-mono"
+                  className={`px-3 py-2 text-xs rounded-lg flex-grow outline-none font-mono border ${s.bgInput}`}
                 />
-                <button type="submit" className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-4 py-2 rounded-lg font-semibold text-slate-200">
+                <button type="submit" className={`text-xs px-4 py-2 rounded-lg font-semibold transition border ${s.bgButtonSec}`}>
                   Inspect
                 </button>
               </form>
 
               {searchedVoter && (
-                <div className="mt-4 p-3 rounded-lg border text-xs bg-slate-900 border-slate-800 animate-fadeIn">
+                <div className={`mt-4 p-3 rounded-lg border text-xs animate-fadeIn ${s.bgCard}`}>
                   {searchedVoter.notFound ? (
-                    <p className="text-red-400 font-medium">❌ No enrollment found for ID <strong className="font-mono">{searchedVoter.query}</strong>.</p>
+                    <p className="text-red-500 font-medium">❌ No enrollment found for ID <strong className="font-mono">{searchedVoter.query}</strong>.</p>
                   ) : (
                     <div className="space-y-1">
-                      <p className="text-teal-400 font-bold">Voter Found: {searchedVoter.name}</p>
-                      <p className="text-slate-300">ID: <span className="font-mono">{searchedVoter.id}</span></p>
-                      <p className="text-slate-300">Status: {searchedVoter.hasVoted ? '✅ Vote securely registered' : '⚠️ Has not cast ballot'}</p>
+                      <p className="text-teal-500 font-bold">Voter Found: {searchedVoter.name}</p>
+                      <p className={s.textMain}>ID: <span className="font-mono">{searchedVoter.id}</span></p>
+                      <p className={s.textMain}>Status: {searchedVoter.hasVoted ? '✅ Vote securely registered' : '⚠️ Has not cast ballot'}</p>
                       {searchedVoter.hasVoted && (
-                        <p className="text-slate-400 text-[10px] break-all font-mono">Receipt Hash: {searchedVoter.receiptHash}</p>
+                        <p className={`text-[10px] break-all font-mono ${s.textMuted}`}>Receipt Hash: {searchedVoter.receiptHash}</p>
                       )}
                     </div>
                   )}
@@ -580,56 +627,56 @@ export default function App() {
 
         {/* --- VIEW: REGISTRATION CARD --- */}
         {activeTab === 'register' && (
-          <div className="max-w-md mx-auto bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-2xl">
+          <div className={`max-w-md mx-auto p-6 rounded-2xl border shadow-2xl ${s.bgCard} transition-colors duration-200`}>
             <div className="text-center mb-6">
-              <h2 className="text-2xl font-black text-slate-100">Voter Enrollment Portal</h2>
-              <p className="text-xs text-slate-400 mt-1">Enroll as a certified student voter inside local secure ledger.</p>
+              <h2 className={`text-2xl font-black ${s.textMain}`}>Voter Enrollment Portal</h2>
+              <p className={`text-xs mt-1 ${s.textMuted}`}>Enroll as a certified student voter inside local secure ledger.</p>
             </div>
 
             <form onSubmit={handleRegister} className="space-y-4">
               <div>
-                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Student Full Name</label>
+                <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student Full Name</label>
                 <input 
                   type="text" 
                   value={regForm.name} 
                   onChange={e => setRegForm({ ...regForm, name: e.target.value })} 
-                  className="w-full bg-slate-900 border border-slate-800 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none text-sm"
+                  className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
                   placeholder="e.g. Ibrahim Abubakar" 
                   required 
                 />
               </div>
 
               <div>
-                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Student Unique ID / Registration No</label>
+                <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student Unique ID / Registration No</label>
                 <input 
                   type="text" 
                   value={regForm.id} 
                   onChange={e => setRegForm({ ...regForm, id: e.target.value })} 
-                  className="w-full bg-slate-900 border border-slate-800 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none text-sm font-mono"
+                  className={`w-full p-3 rounded-xl outline-none text-sm font-mono border ${s.bgInput}`}
                   placeholder="e.g. U15/CS/1001" 
                   required 
                 />
               </div>
 
               <div>
-                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">School Email Address</label>
+                <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>School Email Address</label>
                 <input 
                   type="email" 
                   value={regForm.email} 
                   onChange={e => setRegForm({ ...regForm, email: e.target.value })} 
-                  className="w-full bg-slate-900 border border-slate-800 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none text-sm"
+                  className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
                   placeholder="e.g. student@university.edu.ng" 
                   required 
                 />
               </div>
 
               <div>
-                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Date of Birth (Used for Verification)</label>
+                <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Date of Birth (Used for Verification)</label>
                 <input 
                   type="date" 
                   value={regForm.dob} 
                   onChange={e => setRegForm({ ...regForm, dob: e.target.value })} 
-                  className="w-full bg-slate-900 border border-slate-800 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none text-sm"
+                  className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
                   required 
                 />
               </div>
@@ -645,7 +692,7 @@ export default function App() {
                 <div className="bg-teal-950/40 border border-teal-500/40 p-4 rounded-xl space-y-2 mt-4 animate-pulse">
                   <p className="text-xs font-bold text-teal-400 uppercase tracking-widest">⚠️ CREDENTIALS REGISTERED</p>
                   <p className="text-xs text-slate-300">Your secure, randomly generated voting password is below. Write it down. It is not recoverable unless verified against Date of Birth.</p>
-                  <div className="flex items-center justify-between bg-slate-900 p-3 rounded-lg border border-slate-800">
+                  <div className={`flex items-center justify-between p-3 rounded-lg border ${s.bgCard}`}>
                     <span className="font-mono text-lg font-black text-emerald-400 tracking-widest">{generatedPass}</span>
                     <button 
                       type="button"
@@ -664,7 +711,7 @@ export default function App() {
               <button 
                 type="button" 
                 onClick={() => { setActiveTab('login'); setGeneratedPass(''); }} 
-                className="w-full text-center text-xs text-slate-400 hover:text-slate-200 hover:underline block pt-2"
+                className={`w-full text-center text-xs hover:text-teal-500 hover:underline block pt-2 ${s.textMuted}`}
               >
                 Already have an ID? Back to Login
               </button>
@@ -674,43 +721,43 @@ export default function App() {
 
         {/* --- VIEW: PASSWORD RESET (DOB CHECK) --- */}
         {activeTab === 'forgot' && (
-          <div className="max-w-md mx-auto bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-2xl">
+          <div className={`max-w-md mx-auto p-6 rounded-2xl border shadow-2xl ${s.bgCard} transition-colors duration-200`}>
             <div className="text-center mb-6">
-              <h2 className="text-2xl font-black text-slate-100">Identity-based Password Reset</h2>
-              <p className="text-xs text-slate-400 mt-1">Provide your Student ID and exact Date of Birth to establish a new password.</p>
+              <h2 className={`text-2xl font-black ${s.textMain}`}>Identity-based Password Reset</h2>
+              <p className={`text-xs mt-1 ${s.textMuted}`}>Provide your Student ID and exact Date of Birth to establish a new password.</p>
             </div>
 
             <form onSubmit={handleResetPassword} className="space-y-4">
               <div>
-                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Student ID</label>
+                <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student ID</label>
                 <input 
                   type="text" 
                   value={resetForm.id} 
                   onChange={e => setResetForm({ ...resetForm, id: e.target.value })} 
-                  className="w-full bg-slate-900 border border-slate-800 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none text-sm font-mono"
+                  className={`w-full p-3 rounded-xl outline-none text-sm font-mono border ${s.bgInput}`}
                   placeholder="E.G. U15/CS/1001" 
                   required 
                 />
               </div>
 
               <div>
-                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Date of Birth</label>
+                <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Date of Birth</label>
                 <input 
                   type="date" 
                   value={resetForm.dob} 
                   onChange={e => setResetForm({ ...resetForm, dob: e.target.value })} 
-                  className="w-full bg-slate-900 border border-slate-800 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none text-sm"
+                  className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
                   required 
                 />
               </div>
 
               <div>
-                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">New Desired Password</label>
+                <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>New Desired Password</label>
                 <input 
                   type="password" 
                   value={resetForm.newPassword} 
                   onChange={e => setResetForm({ ...resetForm, newPassword: e.target.value })} 
-                  className="w-full bg-slate-900 border border-slate-800 focus:border-teal-500 text-slate-100 p-3 rounded-xl outline-none text-sm"
+                  className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
                   placeholder="Enter custom desired password" 
                   required 
                 />
@@ -726,7 +773,7 @@ export default function App() {
               <button 
                 type="button" 
                 onClick={() => { setActiveTab('login'); }} 
-                className="w-full text-center text-xs text-slate-400 hover:text-slate-200 hover:underline block pt-2"
+                className={`w-full text-center text-xs hover:text-teal-500 hover:underline block pt-2 ${s.textMuted}`}
               >
                 Back to Login
               </button>
@@ -736,47 +783,47 @@ export default function App() {
 
         {/* --- VIEW: FIRST LOGIN PASSWORD CUSTOMIZATION --- */}
         {activeTab === 'first-login-reset' && currentUser && (
-          <div className="max-w-md mx-auto bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-2xl">
+          <div className={`max-w-md mx-auto p-6 rounded-2xl border shadow-2xl ${s.bgCard} transition-colors duration-200`}>
             <div className="text-center mb-6">
               <span className="bg-teal-500/10 text-teal-400 text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full font-bold border border-teal-500/30">
                 Mandatory Security Setup
               </span>
-              <h2 className="text-2xl font-black text-slate-100 mt-3">Configure Password</h2>
-              <p className="text-xs text-slate-400 mt-1">This is your first login. To secure your voting credentials, verify your generated access key and set up your customized password.</p>
+              <h2 className={`text-2xl font-black mt-3 ${s.textMain}`}>Configure Password</h2>
+              <p className={`text-xs mt-1 ${s.textMuted}`}>This is your first login. To secure your voting credentials, verify your generated access key and set up your customized password.</p>
             </div>
 
             <form onSubmit={handleFirstLoginResetSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Verify Generated Key</label>
+                <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Verify Generated Key</label>
                 <input 
                   type="password" 
                   value={firstResetForm.currentPassword} 
                   onChange={e => setFirstResetForm({ ...firstResetForm, currentPassword: e.target.value })} 
-                  className="w-full bg-slate-900 border border-slate-800 focus:border-blue-500 text-slate-100 p-3 rounded-xl outline-none text-sm font-mono placeholder-slate-600"
+                  className={`w-full p-3 rounded-xl outline-none text-sm font-mono placeholder-slate-400 border ${s.bgInput}`}
                   placeholder="Paste your generated password key" 
                   required 
                 />
               </div>
 
               <div>
-                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">New Desired Password</label>
+                <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>New Desired Password</label>
                 <input 
                   type="password" 
                   value={firstResetForm.newPassword} 
                   onChange={e => setFirstResetForm({ ...firstResetForm, newPassword: e.target.value })} 
-                  className="w-full bg-slate-900 border border-slate-800 focus:border-blue-500 text-slate-100 p-3 rounded-xl outline-none text-sm placeholder-slate-600"
+                  className={`w-full p-3 rounded-xl outline-none text-sm placeholder-slate-400 border ${s.bgInput}`}
                   placeholder="Enter custom desired password" 
                   required 
                 />
               </div>
 
               <div>
-                <label className="block text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1.5">Confirm Desired Password</label>
+                <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Confirm Desired Password</label>
                 <input 
                   type="password" 
                   value={firstResetForm.confirmPassword} 
                   onChange={e => setFirstResetForm({ ...firstResetForm, confirmPassword: e.target.value })} 
-                  className="w-full bg-slate-900 border border-slate-800 focus:border-blue-500 text-slate-100 p-3 rounded-xl outline-none text-sm placeholder-slate-600"
+                  className={`w-full p-3 rounded-xl outline-none text-sm placeholder-slate-400 border ${s.bgInput}`}
                   placeholder="Re-enter custom desired password" 
                   required 
                 />
@@ -792,7 +839,7 @@ export default function App() {
               <button 
                 type="button" 
                 onClick={() => handleLogout('Setup cancelled. Please login to configure credentials.')} 
-                className="w-full text-center text-xs text-slate-400 hover:text-slate-200 hover:underline block pt-2"
+                className={`w-full text-center text-xs hover:text-teal-500 hover:underline block pt-2 ${s.textMuted}`}
               >
                 Cancel & Sign Out
               </button>
@@ -805,27 +852,27 @@ export default function App() {
           <div className="space-y-6">
             
             {/* Top Voter Card Banner */}
-            <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-xl flex flex-col md:flex-row md:justify-between md:items-center gap-6 relative overflow-hidden">
+            <div className={`p-6 rounded-2xl border shadow-xl flex flex-col md:flex-row md:justify-between md:items-center gap-6 relative overflow-hidden ${s.bgCard} transition-colors duration-200`}>
               <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/5 rounded-full blur-2xl"></div>
               
               <div className="space-y-1">
-                <span className="bg-slate-800 text-teal-400 text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full font-bold border border-slate-700">
+                <span className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full font-bold border ${s.bgBanner}`}>
                   Verified Active Session
                 </span>
-                <h2 className="text-2xl font-black text-slate-100 pt-1.5">{currentUser.name}</h2>
-                <div className="grid grid-cols-2 md:flex md:items-center gap-x-4 gap-y-1 text-xs text-slate-400 font-mono">
-                  <span>ID: <strong className="text-slate-200">{currentUser.id}</strong></span>
-                  <span className="hidden md:inline text-slate-600">|</span>
-                  <span>Email: <strong className="text-slate-200">{currentUser.email}</strong></span>
-                  <span className="hidden md:inline text-slate-600">|</span>
-                  <span>DOB: <strong className="text-slate-200">{currentUser.dob}</strong></span>
+                <h2 className={`text-2xl font-black pt-1.5 ${s.textMain}`}>{currentUser.name}</h2>
+                <div className={`grid grid-cols-2 md:flex md:items-center gap-x-4 gap-y-1 text-xs font-mono ${s.textMuted}`}>
+                  <span>ID: <strong className={s.textMain}>{currentUser.id}</strong></span>
+                  <span className="hidden md:inline">|</span>
+                  <span>Email: <strong className={s.textMain}>{currentUser.email}</strong></span>
+                  <span className="hidden md:inline">|</span>
+                  <span>DOB: <strong className={s.textMain}>{currentUser.dob}</strong></span>
                 </div>
               </div>
 
               <div className="flex flex-col gap-2 min-w-44">
                 <button 
                   onClick={() => handleLogout()} 
-                  className="w-full text-center bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-300 text-xs py-2.5 px-4 rounded-xl font-bold transition"
+                  className={`w-full text-center text-xs py-2.5 px-4 rounded-xl font-bold transition border ${s.bgButtonSec}`}
                 >
                   Terminate Session
                 </button>
@@ -836,17 +883,17 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               
               {/* Left Side: Status Block */}
-              <div className="md:col-span-1 bg-slate-950 p-6 rounded-2xl border border-slate-800 flex flex-col justify-between h-full">
+              <div className={`p-6 rounded-2xl border flex flex-col justify-between h-full ${s.bgCard} transition-colors duration-200`}>
                 <div className="space-y-4">
-                  <h3 className="text-xs uppercase tracking-widest font-extrabold text-slate-400">Ledger Verification</h3>
-                  <div className={`p-4 rounded-xl border text-center ${currentUser.hasVoted ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300' : 'bg-amber-950/40 border-amber-500/50 text-amber-300'}`}>
+                  <h3 className={`text-xs uppercase tracking-widest font-extrabold ${s.textMuted}`}>Ledger Verification</h3>
+                  <div className={`p-4 rounded-xl border text-center ${currentUser.hasVoted ? s.bgAlertSuccess : s.bgAlertPending}`}>
                     <p className="text-xs uppercase tracking-widest font-semibold opacity-75">Status Status</p>
                     <p className="text-xl font-black mt-1.5 tracking-wide">{currentUser.hasVoted ? '✅ Ballot Cast' : '⚠️ Pending'}</p>
                   </div>
                 </div>
 
                 {currentUser.hasVoted && (
-                  <div className="mt-6 pt-6 border-t border-slate-900 space-y-3">
+                  <div className={`mt-6 pt-6 border-t space-y-3 ${s.borderSub}`}>
                     <button 
                       onClick={handleDownloadPDF} 
                       className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold py-3 px-4 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/10"
@@ -856,23 +903,23 @@ export default function App() {
                       </svg>
                       Download PDF Slip
                     </button>
-                    <p className="text-[10px] text-slate-500 text-center">Use this offline PDF slip as proof for accreditation verification.</p>
+                    <p className={`text-[10px] text-center ${s.textMuted}`}>Use this offline PDF slip as proof for accreditation verification.</p>
                   </div>
                 )}
               </div>
 
               {/* Right Side: Voting booth / Receipt display */}
-              <div className="md:col-span-2 bg-slate-950 p-6 rounded-2xl border border-slate-800">
+              <div className={`md:col-span-2 p-6 rounded-2xl border ${s.bgCard} transition-colors duration-200`}>
                 {!currentUser.hasVoted ? (
                   <div className="space-y-6">
-                    <div className="border-b border-slate-900 pb-3">
-                      <h3 className="text-md font-bold text-slate-200">Consolidated Executive Election Ballot</h3>
-                      <p className="text-xs text-slate-400">Please make one choice for each open position. Your complete ballot will be securely committed once you hit "Submit Ballot".</p>
+                    <div className={`border-b pb-3 ${s.borderSub}`}>
+                      <h3 className={`text-md font-bold ${s.textMain}`}>Consolidated Executive Election Ballot</h3>
+                      <p className={`text-xs ${s.textMuted}`}>Please make one choice for each open position. Your complete ballot will be securely committed once you hit "Submit Ballot".</p>
                     </div>
 
                     {/* Loop through each election position */}
                     {POSITIONS.map(pos => (
-                      <div key={pos} className="space-y-3 border-b border-slate-900 pb-4">
+                      <div key={pos} className={`space-y-3 border-b pb-4 ${s.borderSub}`}>
                         <h4 className="text-sm font-bold text-teal-400 tracking-wide uppercase">{pos} Position</h4>
                         <div className="grid grid-cols-1 gap-2">
                           {candidates.filter(cand => cand.post === pos).map(cand => {
@@ -884,15 +931,15 @@ export default function App() {
                                 onClick={() => handleSelectCandidate(pos, cand)}
                                 className={`w-full text-left p-4 rounded-xl border transition flex justify-between items-center ${
                                   isSelected 
-                                    ? 'bg-teal-950/30 border-teal-500 text-slate-100' 
-                                    : 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-300'
+                                    ? 'bg-teal-500/10 border-teal-500 text-teal-400' 
+                                    : isDark ? 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-700'
                                 }`}
                               >
                                 <div>
                                   <p className="font-bold text-sm">{cand.name}</p>
-                                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">{cand.association}</span>
+                                  <span className={`text-[10px] font-mono uppercase tracking-widest ${s.textMuted}`}>{cand.association}</span>
                                 </div>
-                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-teal-500 bg-teal-500' : 'border-slate-700'}`}>
+                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-teal-500 bg-teal-500' : 'border-slate-400'}`}>
                                   {isSelected && (
                                     <svg className="w-3.5 h-3.5 text-slate-950 font-bold" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
@@ -915,7 +962,7 @@ export default function App() {
                         className={`w-full p-4 rounded-xl font-extrabold text-sm transition tracking-wider uppercase flex items-center justify-center gap-2 ${
                           isBallotComplete 
                             ? 'bg-teal-500 hover:bg-teal-400 text-slate-950 shadow-lg shadow-teal-500/20 active:scale-[0.99]' 
-                            : 'bg-slate-800 border border-slate-700 text-slate-500 cursor-not-allowed'
+                            : 'bg-slate-300 dark:bg-slate-800 border dark:border-slate-700 text-slate-500 cursor-not-allowed'
                         }`}
                       >
                         {isBallotComplete ? 'Submit Complete Ballot' : 'Complete All Positions To Submit'}
@@ -925,17 +972,17 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="border-b border-slate-900 pb-3">
-                      <h3 className="text-md font-bold text-slate-200">Cryptographic Verification Proof</h3>
-                      <p className="text-xs text-slate-400">These details represent your mathematical vote verification string in the local data nodes.</p>
+                    <div className={`border-b pb-3 ${s.borderSub}`}>
+                      <h3 className={`text-md font-bold ${s.textMain}`}>Cryptographic Verification Proof</h3>
+                      <p className={`text-xs ${s.textMuted}`}>These details represent your mathematical vote verification string in the local data nodes.</p>
                     </div>
 
-                    <div className="space-y-3 text-xs bg-slate-900 p-4 rounded-xl border border-slate-800 font-mono">
+                    <div className={`space-y-3 text-xs p-4 rounded-xl border font-mono ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
                       <div>
-                        <span className="text-slate-500 block uppercase text-[10px] mb-1">Selections Logged</span>
-                        <div className="space-y-1.5 text-slate-300 text-xs">
+                        <span className={`block uppercase text-[10px] mb-1 ${s.textMuted}`}>Selections Logged</span>
+                        <div className={`space-y-1.5 text-xs ${s.textMain}`}>
                           {currentUser.votedFor.split(' | ').map((line, i) => (
-                            <div key={i} className="flex gap-1.5 py-0.5 border-b border-slate-950 last:border-0">
+                            <div key={i} className={`flex gap-1.5 py-0.5 border-b last:border-0 ${s.borderSub}`}>
                               <span className="text-teal-400 font-bold">✔️</span>
                               <span>{line}</span>
                             </div>
@@ -943,28 +990,28 @@ export default function App() {
                         </div>
                       </div>
                       <div className="pt-2">
-                        <span className="text-slate-500 block uppercase text-[10px]">Verification Signature</span>
-                        <span className="text-emerald-400 break-all font-bold select-all">{currentUser.receiptHash}</span>
+                        <span className={`block uppercase text-[10px] ${s.textMuted}`}>Verification Signature</span>
+                        <span className="text-emerald-500 break-all font-bold select-all">{currentUser.receiptHash}</span>
                       </div>
                       <div>
-                        <span className="text-slate-500 block uppercase text-[10px]">Timestamp</span>
-                        <span className="text-slate-300">{currentUser.timestamp}</span>
+                        <span className={`block uppercase text-[10px] ${s.textMuted}`}>Timestamp</span>
+                        <span className={s.textMain}>{currentUser.timestamp}</span>
                       </div>
                       <div>
-                        <span className="text-slate-500 block uppercase text-[10px]">Encrypted Payload Match</span>
-                        <span className="text-slate-400 text-[10px]">SHA256_LOCAL_PERSIST({currentUser.id || 'N/A'} || SALTING_VECTOR_329)</span>
+                        <span className={`block uppercase text-[10px] ${s.textMuted}`}>Encrypted Payload Match</span>
+                        <span className={`text-[10px] ${s.textMuted}`}>SHA256_LOCAL_PERSIST({currentUser.id || 'N/A'} || SALTING_VECTOR_329)</span>
                       </div>
                     </div>
 
-                    <div className="bg-slate-900/50 border border-slate-800 p-3.5 rounded-xl text-center">
-                      <p className="text-[10px] text-slate-400 italic">To ensure 100% voter choice anonymity, the association between your voter record and selected candidate choices is held strictly within separate memory blocks.</p>
+                    <div className={`p-3.5 rounded-xl text-center border ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                      <p className={`text-[10px] italic ${s.textMuted}`}>To ensure 100% voter choice anonymity, the association between your voter record and selected candidate choices is held strictly within separate memory blocks.</p>
                     </div>
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="text-center text-[10px] text-slate-500 font-mono">
+            <div className={`text-center text-[10px] font-mono ${s.textMuted}`}>
               Auto-lock safety protocol active. Inactivity for 5 minutes will instantly terminate credentials.
             </div>
           </div>
@@ -972,19 +1019,19 @@ export default function App() {
 
         {/* --- VIEW: SYSTEM & RESULTS DASHBOARD (ADMIN VIEW) --- */}
         {activeTab === 'admin' && (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-fadeIn">
             
             {/* Header / Admin options */}
-            <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className={`p-6 rounded-2xl border shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 ${s.bgCard} transition-colors duration-200`}>
               <div>
-                <h2 className="text-2xl font-black text-slate-100">Election Audit Dashboard</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Live local results auditing with built-in analytics visualization tools.</p>
+                <h2 className={`text-2xl font-black ${s.textMain}`}>Election Audit Dashboard</h2>
+                <p className={`text-xs mt-0.5 ${s.textMuted}`}>Live local results auditing with built-in analytics visualization tools.</p>
               </div>
 
               <div className="flex flex-wrap gap-2 w-full md:w-auto">
                 <button 
                   onClick={handleSeedDemoData} 
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3.5 py-2 rounded-lg font-bold border border-slate-700 transition"
+                  className={`text-xs px-3.5 py-2 rounded-lg font-bold transition border ${s.bgButtonSec}`}
                 >
                   🌱 Seed Mock Data
                 </button>
@@ -1006,36 +1053,36 @@ export default function App() {
             {/* Overall Analytics Grid */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               
-              <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 text-center">
-                <p className="text-xs text-slate-400 uppercase tracking-widest font-mono">Total Enrolled Voters</p>
-                <p className="text-4xl font-black text-slate-100 mt-2 font-mono">{voters.length}</p>
+              <div className={`p-5 rounded-xl border text-center ${s.bgCard} transition-colors duration-200`}>
+                <p className={`text-xs uppercase tracking-widest font-mono ${s.textMuted}`}>Total Enrolled Voters</p>
+                <p className={`text-4xl font-black mt-2 font-mono ${s.textMain}`}>{voters.length}</p>
               </div>
 
-              <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 text-center">
-                <p className="text-xs text-slate-400 uppercase tracking-widest font-mono">Total Enrolled Ballots</p>
+              <div className={`p-5 rounded-xl border text-center ${s.bgCard} transition-colors duration-200`}>
+                <p className={`text-xs uppercase tracking-widest font-mono ${s.textMuted}`}>Total Enrolled Ballots</p>
                 <p className="text-4xl font-black text-teal-400 mt-2 font-mono">
                   {voters.filter(v => v.hasVoted).length}
                 </p>
               </div>
 
-              <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 text-center">
-                <p className="text-xs text-slate-400 uppercase tracking-widest font-mono">Voter Turnout Rate</p>
+              <div className={`p-5 rounded-xl border text-center ${s.bgCard} transition-colors duration-200`}>
+                <p className={`text-xs uppercase tracking-widest font-mono ${s.textMuted}`}>Voter Turnout Rate</p>
                 <p className="text-4xl font-black text-blue-400 mt-2 font-mono">
                   {voters.length > 0 ? `${Math.round((voters.filter(v => v.hasVoted).length / voters.length) * 100)}%` : '0%'}
                 </p>
               </div>
 
-              <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 text-center">
-                <p className="text-xs text-slate-400 uppercase tracking-widest font-mono">Integrity Status</p>
-                <p className="text-lg font-black text-emerald-400 mt-4 uppercase tracking-widest">
+              <div className={`p-5 rounded-xl border text-center ${s.bgCard} transition-colors duration-200`}>
+                <p className={`text-xs uppercase tracking-widest font-mono ${s.textMuted}`}>Integrity Status</p>
+                <p className="text-lg font-black text-emerald-500 mt-4 uppercase tracking-widest">
                   🛡️ Legitimate
                 </p>
               </div>
             </div>
 
             {/* Live Chart Results representation */}
-            <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 space-y-6">
-              <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400">Live Vote Tally Results (Interactive)</h3>
+            <div className={`p-6 rounded-2xl border space-y-6 ${s.bgCard} transition-colors duration-200`}>
+              <h3 className={`text-sm font-bold uppercase tracking-widest ${s.textMuted}`}>Live Vote Tally Results (Interactive)</h3>
               
               <div className="space-y-8">
                 {POSITIONS.map(pos => {
@@ -1043,7 +1090,7 @@ export default function App() {
                   const totalVotesForPosition = positionCandidates.reduce((total, cand) => total + cand.votes, 0);
 
                   return (
-                    <div key={pos} className="space-y-4 border-b border-slate-900 pb-6 last:border-0 last:pb-0">
+                    <div key={pos} className={`space-y-4 border-b pb-6 last:border-0 last:pb-0 ${s.borderSub}`}>
                       <h4 className="text-sm font-black text-teal-400 uppercase tracking-wider">{pos} Ballot Tally ({totalVotesForPosition} total votes)</h4>
                       
                       <div className="space-y-4">
@@ -1053,12 +1100,12 @@ export default function App() {
                             <div key={cand.id} className="space-y-2">
                               <div className="flex justify-between items-center text-xs">
                                 <div>
-                                  <span className="font-extrabold text-slate-100 text-sm">{cand.name}</span>
-                                  <span className="text-[10px] text-slate-500 font-mono ml-2">({cand.association})</span>
+                                  <span className={`font-extrabold text-sm ${s.textMain}`}>{cand.name}</span>
+                                  <span className={`text-[10px] font-mono ml-2 ${s.textMuted}`}>({cand.association})</span>
                                 </div>
-                                <span className="font-mono text-slate-300 font-bold">{cand.votes} votes ({percentage}%)</span>
+                                <span className={`font-mono font-bold ${s.textMain}`}>{cand.votes} votes ({percentage}%)</span>
                               </div>
-                              <div className="w-full bg-slate-900 rounded-full h-3.5 overflow-hidden border border-slate-800">
+                              <div className={`w-full rounded-full h-3.5 overflow-hidden border ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
                                 <div 
                                   className={`h-full rounded-full transition-all duration-500 ${cand.color}`} 
                                   style={{ width: `${percentage}%` }}
@@ -1075,15 +1122,15 @@ export default function App() {
             </div>
 
             {/* Voter Ledger Audit Log */}
-            <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 space-y-4">
-              <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400">System Enrollment & Vote Logs</h3>
+            <div className={`p-6 rounded-2xl border space-y-4 ${s.bgCard} transition-colors duration-200`}>
+              <h3 className={`text-sm font-bold uppercase tracking-widest ${s.textMuted}`}>System Enrollment & Vote Logs</h3>
               
               {voters.length === 0 ? (
-                <p className="text-xs text-slate-500 text-center py-4 italic">No voter registration records located inside state storage cache.</p>
+                <p className={`text-xs text-center py-4 italic ${s.textMuted}`}>No voter registration records located inside state storage cache.</p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs text-slate-300">
-                    <thead className="text-[10px] text-slate-400 uppercase tracking-wider bg-slate-900 border-b border-slate-800">
+                  <table className="w-full text-left text-xs">
+                    <thead className={`text-[10px] uppercase tracking-wider border-b ${s.bgTableHead}`}>
                       <tr>
                         <th className="p-3">Voter Name</th>
                         <th className="p-3 font-mono">Student ID</th>
@@ -1093,19 +1140,19 @@ export default function App() {
                         <th className="p-3">Assigned password</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-900">
+                    <tbody className={`divide-y ${isDark ? 'divide-slate-900' : 'divide-slate-100'}`}>
                       {voters.map(v => (
-                        <tr key={v.id} className="hover:bg-slate-900/50">
-                          <td className="p-3 font-semibold">{v.name}</td>
-                          <td className="p-3 font-mono text-teal-400">{v.id}</td>
-                          <td className="p-3 text-slate-400">{v.email}</td>
-                          <td className="p-3 text-slate-400">{v.dob}</td>
+                        <tr key={v.id} className={isDark ? 'hover:bg-slate-900/50' : 'hover:bg-slate-50'}>
+                          <td className={`p-3 font-semibold ${s.textMain}`}>{v.name}</td>
+                          <td className="p-3 font-mono text-teal-500">{v.id}</td>
+                          <td className={`p-3 ${s.textMuted}`}>{v.email}</td>
+                          <td className={`p-3 ${s.textMuted}`}>{v.dob}</td>
                           <td className="p-3 text-center">
-                            <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-bold ${v.hasVoted ? 'bg-emerald-950 text-emerald-300 border border-emerald-900' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}>
+                            <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-bold ${v.hasVoted ? 'bg-emerald-950 text-emerald-300 border border-emerald-900' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400 border dark:border-slate-700'}`}>
                               {v.hasVoted ? 'CAST' : 'PENDING'}
                             </span>
                           </td>
-                          <td className="p-3 font-mono text-[11px] text-slate-500">{v.password}</td>
+                          <td className={`p-3 font-mono text-[11px] ${s.textMuted}`}>{v.password}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1120,15 +1167,15 @@ export default function App() {
       </main>
 
       {/* FOOTER */}
-      <footer className="bg-slate-950 border-t border-slate-800 py-6 px-6 mt-12 text-center text-xs text-slate-500 space-y-1">
+      <footer className={`${s.bgHeader} border-t py-6 px-6 mt-12 text-center text-xs transition-colors duration-200 ${s.textMuted} space-y-1`}>
         <p>© 2026 Web-Based Online Cryptographic Voting Prototype.</p>
-        <p className="font-mono text-[10px] uppercase tracking-widest text-slate-600">Distributed Ballot Box Implementation Node</p>
+        <p className="font-mono text-[10px] uppercase tracking-widest">Distributed Ballot Box Implementation Node</p>
       </footer>
 
       {/* --- CONFIRMATION ACTION MODAL overlay --- */}
       {confirmVoteModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-sm w-full text-center space-y-4 shadow-2xl">
+          <div className={`border p-6 rounded-2xl max-w-sm w-full text-center space-y-4 shadow-2xl ${s.bgCard}`}>
             <div className="w-12 h-12 rounded-full bg-teal-500/10 text-teal-400 flex items-center justify-center mx-auto">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4"></path>
@@ -1136,25 +1183,25 @@ export default function App() {
             </div>
             
             <div className="space-y-1 text-left">
-              <h3 className="text-lg font-extrabold text-slate-100 text-center mb-2">Verify Ballot Selections</h3>
-              <p className="text-xs text-slate-400 text-center mb-4">Review your selected candidate choices before final submission:</p>
+              <h3 className={`text-lg font-extrabold text-center mb-2 ${s.textMain}`}>Verify Ballot Selections</h3>
+              <p className={`text-xs text-center mb-4 ${s.textMuted}`}>Review your selected candidate choices before final submission:</p>
               
-              <div className="space-y-2 bg-slate-950 p-3 rounded-xl border border-slate-800 mb-4 font-mono text-xs">
+              <div className={`space-y-2 p-3 rounded-xl border mb-4 font-mono text-xs ${isDark ? 'bg-slate-950 border-slate-850' : 'bg-slate-50 border-slate-200'}`}>
                 {POSITIONS.map(pos => (
-                  <div key={pos} className="flex justify-between py-1 border-b border-slate-900 last:border-0 last:pb-0">
-                    <span className="text-slate-500">{pos}:</span>
-                    <span className="text-teal-400 font-bold">{ballotSelections[pos]?.name}</span>
+                  <div key={pos} className={`flex justify-between py-1 border-b last:border-0 last:pb-0 ${s.borderSub}`}>
+                    <span className={s.textMuted}>{pos}:</span>
+                    <span className="text-teal-500 font-bold">{ballotSelections[pos]?.name}</span>
                   </div>
                 ))}
               </div>
 
-              <p className="text-[10px] text-slate-500 text-center leading-normal">Selections will be anonymized and logged into the secure local storage registry. This action cannot be undone.</p>
+              <p className={`text-[10px] text-center leading-normal ${s.textMuted}`}>Selections will be anonymized and logged into the secure local storage registry. This action cannot be undone.</p>
             </div>
 
             <div className="grid grid-cols-2 gap-3 pt-2">
               <button 
                 onClick={() => setConfirmVoteModal(false)} 
-                className="bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 px-4 rounded-xl text-xs font-semibold border border-slate-700 transition"
+                className={`py-2.5 px-4 rounded-xl text-xs font-semibold border transition ${s.bgButtonSec}`}
               >
                 Cancel
               </button>
