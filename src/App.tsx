@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 export default function App() {
+  // --- DEFAULT DATA FOR SIMULATION & PROJECT DEFENSE ---
   const DEFAULT_POSITIONS = ['President', 'Secretary General', 'Treasurer'];
 
   const DEFAULT_CANDIDATES = [
@@ -9,6 +10,16 @@ export default function App() {
     { id: 'c3', name: 'Ibrahim Musa', post: 'Secretary General', association: 'NANS', votes: 0, color: 'bg-amber-600' },
     { id: 'c4', name: 'Sarah Udoh', post: 'Secretary General', association: 'NANS', votes: 0, color: 'bg-pink-600' }
   ];
+
+  const DEFAULT_WHITELIST = [
+    'U15/CS/1001', 'U15/CS/1002', 'U15/CS/1003', 'U15/CS/1004', 'NIN20268899', 'NIN20265544'
+  ];
+
+  const DEFAULT_ELECTION = {
+    name: 'SUG Presidential & General Election 2025/2026',
+    startTime: new Date(Date.now() - 3600000).toISOString().slice(0, 16), // Started 1 hour ago
+    endTime: new Date(Date.now() + 86400000).toISOString().slice(0, 16)   // Ends in 24 hours
+  };
 
   const [appMode, setAppMode] = useState(() => localStorage.getItem('evote_mode') || 'gate');
   const [theme, setTheme] = useState(() => localStorage.getItem('evote_theme') || 'dark');
@@ -21,6 +32,16 @@ export default function App() {
   const [candidates, setCandidates] = useState(() => {
     const saved = localStorage.getItem('evote_candidates');
     return saved ? JSON.parse(saved) : DEFAULT_CANDIDATES;
+  });
+
+  const [whitelist, setWhitelist] = useState(() => {
+    const saved = localStorage.getItem('evote_whitelist');
+    return saved ? JSON.parse(saved) : DEFAULT_WHITELIST;
+  });
+
+  const [electionConfig, setElectionConfig] = useState(() => {
+    const saved = localStorage.getItem('evote_election_config');
+    return saved ? JSON.parse(saved) : DEFAULT_ELECTION;
   });
 
   const [voters, setVoters] = useState(() => {
@@ -48,6 +69,7 @@ export default function App() {
   
   const [newPosition, setNewPosition] = useState('');
   const [newCand, setNewCand] = useState({ name: '', post: 'President', association: '', color: 'bg-blue-600' });
+  const [newWhitelistId, setNewWhitelistId] = useState('');
 
   const [alert, setAlert] = useState(null);
   const [generatedPass, setGeneratedPass] = useState('');
@@ -55,6 +77,9 @@ export default function App() {
   const [ballotSelections, setBallotSelections] = useState({});
   const [searchStatusQuery, setSearchStatusQuery] = useState('');
   const [searchedVoter, setSearchedVoter] = useState(null);
+
+  // Dynamic system time checker to enable/disable voting in real time
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
     localStorage.setItem('evote_mode', appMode);
@@ -73,6 +98,14 @@ export default function App() {
   }, [candidates]);
 
   useEffect(() => {
+    localStorage.setItem('evote_whitelist', JSON.stringify(whitelist));
+  }, [whitelist]);
+
+  useEffect(() => {
+    localStorage.setItem('evote_election_config', JSON.stringify(electionConfig));
+  }, [electionConfig]);
+
+  useEffect(() => {
     localStorage.setItem('evote_voters', JSON.stringify(voters));
   }, [voters]);
 
@@ -88,6 +121,12 @@ export default function App() {
     }
   }, [currentVoter]);
 
+  // Real-time interval timer for voting windows
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   useEffect(() => {
     const handleCrossTabSync = (e) => {
       if (e.key === 'evote_candidates' && e.newValue) {
@@ -95,6 +134,12 @@ export default function App() {
       }
       if (e.key === 'evote_positions' && e.newValue) {
         setPositions(JSON.parse(e.newValue));
+      }
+      if (e.key === 'evote_whitelist' && e.newValue) {
+        setWhitelist(JSON.parse(e.newValue));
+      }
+      if (e.key === 'evote_election_config' && e.newValue) {
+        setElectionConfig(JSON.parse(e.newValue));
       }
       if (e.key === 'evote_voters' && e.newValue) {
         setVoters(JSON.parse(e.newValue));
@@ -166,10 +211,16 @@ export default function App() {
       return triggerAlert('Please provide all details.', 'error');
     }
 
-    if (voters.some(v => v.id === cleanId)) {
-      return triggerAlert('Student ID has already been registered.', 'error');
+    // --- SECURITY RULE: CHECK ELIGIBILITY WHITELIST ---
+    if (!whitelist.includes(cleanId)) {
+      return triggerAlert('Registration Blocked: ID/NIN is not on the administrator eligibility whitelist.', 'error');
     }
 
+    if (voters.some(v => v.id === cleanId)) {
+      return triggerAlert('Student ID/NIN has already been registered.', 'error');
+    }
+
+    // Generate random secure temporary access key
     const passCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
     const newVoterObj = {
@@ -266,15 +317,27 @@ export default function App() {
 
   const processCastBallot = () => {
     if (!currentVoter) return;
+
+    // Timeframe Validation Check
+    const start = new Date(electionConfig.startTime);
+    const end = new Date(electionConfig.endTime);
+    if (currentTime < start || currentTime > end) {
+      triggerAlert('System Lockout: Election is currently not active.', 'error');
+      setConfirmVoteModal(false);
+      return;
+    }
+
     if (currentVoter.hasVoted) {
       triggerAlert('Double voting attempt rejected by local ledger integrity rules.', 'error');
       setConfirmVoteModal(false);
       return;
     }
 
+    // Generate cryptographic proof receipt
     const receiptCode = 'SEC-REC-' + Math.random().toString(36).substring(2, 10).toUpperCase() + '-' + Math.floor(Math.random() * 9000 + 1000);
     const voteTime = new Date().toLocaleString();
 
+    // Dynamically increment candidate votes
     setCandidates(prev => prev.map(cand => {
       const selectedForPost = ballotSelections[cand.post];
       if (selectedForPost && selectedForPost.id === cand.id) {
@@ -283,6 +346,7 @@ export default function App() {
       return cand;
     }));
 
+    // Create string of choices for history verification log
     const selectionsSummary = positions.map(pos => `${pos}: ${ballotSelections[pos]?.name || 'Abstained'}`).join(' | ');
 
     const updatedVoters = voters.map(v => {
@@ -334,6 +398,23 @@ export default function App() {
     }
   };
 
+  const handleUpdateElectionConfig = (e) => {
+    e.preventDefault();
+    if (!electionConfig.name || !electionConfig.startTime || !electionConfig.endTime) {
+      return triggerAlert('Fill in all election settings parameters.', 'error');
+    }
+    
+    const start = new Date(electionConfig.startTime);
+    const end = new Date(electionConfig.endTime);
+
+    if (end <= start) {
+      return triggerAlert('Configuration Error: End time must fall after start time.', 'error');
+    }
+
+    setElectionConfig({ ...electionConfig });
+    triggerAlert('Active election variables successfully broadcasted to nodes.', 'success');
+  };
+
   const handleCreatePosition = (e) => {
     e.preventDefault();
     const name = newPosition.trim();
@@ -379,6 +460,26 @@ export default function App() {
     triggerAlert('Candidate removed successfully.', 'info');
   };
 
+  const handleAddWhitelistId = (e) => {
+    e.preventDefault();
+    const cleanId = newWhitelistId.trim().toUpperCase();
+    if (!cleanId) return;
+    
+    if (whitelist.includes(cleanId)) {
+      return triggerAlert('Registration Blocked: ID already exists in whitelist database.', 'error');
+    }
+
+    const updatedWhitelist = [...whitelist, cleanId];
+    setWhitelist(updatedWhitelist);
+    setNewWhitelistId('');
+    triggerAlert(`Successfully whitelisted eligibility key: ${cleanId}`, 'success');
+  };
+
+  const handleDeleteWhitelistId = (idToDelete) => {
+    setWhitelist(whitelist.filter(id => id !== idToDelete));
+    triggerAlert('ID removed from eligibility whitelist matrix.', 'info');
+  };
+
   const handleSeedMockData = () => {
     const mockVoters = [
       { id: 'U15/CS/1001', name: 'Kabiru Adamu', email: 'k.adamu@uni.edu.ng', dob: '2001-05-12', password: 'DEMO1', hasVoted: true, votedFor: 'President: Comrade Yusuf Bello | Secretary General: Sarah Udoh | Treasurer: Abstained', receiptHash: 'SEC-REC-MOCK-1', timestamp: '5/18/2026, 11:30 AM', isFirstLogin: false },
@@ -393,11 +494,15 @@ export default function App() {
     localStorage.removeItem('evote_voters');
     localStorage.removeItem('evote_candidates');
     localStorage.removeItem('evote_positions');
+    localStorage.removeItem('evote_whitelist');
+    localStorage.removeItem('evote_election_config');
     localStorage.removeItem('evote_current_voter');
     
     setVoters([]);
     setPositions(DEFAULT_POSITIONS);
     setCandidates(DEFAULT_CANDIDATES);
+    setWhitelist(DEFAULT_WHITELIST);
+    setElectionConfig(DEFAULT_ELECTION);
     setCurrentVoter(null);
     setVoterTab('login');
     triggerAlert('System data reset successfully.', 'info');
@@ -406,6 +511,7 @@ export default function App() {
   const handleDownloadPDF = () => {
     if (!currentVoter || !currentVoter.hasVoted) return;
 
+    // Direct client load of standard modular jsPDF assets
     const scriptUrl = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
 
     const generateReceiptDoc = () => {
@@ -413,6 +519,7 @@ export default function App() {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a6' });
 
+        // Outer layout branding
         doc.setFillColor(15, 23, 42);
         doc.rect(0, 0, 105, 15, 'F');
         
@@ -421,6 +528,7 @@ export default function App() {
         doc.setTextColor(255, 255, 255);
         doc.text('SECURE VOTE NODE - AUDIT SLIP', 8, 10);
 
+        // Core transaction variables
         doc.setFontSize(8);
         doc.setTextColor(50, 50, 50);
         doc.setFont('Helvetica', 'normal');
@@ -468,6 +576,91 @@ export default function App() {
     }
   };
 
+  const handleDownloadRegisteredListPDF = () => {
+    const scriptUrl = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+
+    const generateRegistryDoc = () => {
+      try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+        // Header Style
+        doc.setFillColor(30, 41, 59);
+        doc.rect(0, 0, 210, 25, 'F');
+        
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(16);
+        doc.setTextColor(255, 255, 255);
+        doc.text('SECURE VOTE - SYSTEM REGISTERED VOTERS REPORT', 12, 16);
+
+        doc.setFontSize(9);
+        doc.setTextColor(180, 180, 180);
+        doc.setFont('Helvetica', 'normal');
+        doc.text(`Election: ${electionConfig.name}  |  Generated on: ${new Date().toLocaleString()}`, 12, 21);
+
+        // Grid Content
+        doc.setFontSize(10);
+        doc.setTextColor(50, 50, 50);
+        doc.setFont('Helvetica', 'bold');
+        
+        // Table Headers
+        doc.text('S/N', 12, 38);
+        doc.text('Student Name', 25, 38);
+        doc.text('ID / Matric No', 75, 38);
+        doc.text('Email Address', 110, 38);
+        doc.text('Status', 165, 38);
+        doc.text('Pass Key', 185, 38);
+        doc.line(12, 41, 198, 41);
+
+        doc.setFont('Helvetica', 'normal');
+        let currentY = 47;
+
+        voters.forEach((v, index) => {
+          if (currentY > 275) {
+            doc.addPage();
+            currentY = 20;
+          }
+          doc.text(`${index + 1}`, 12, currentY);
+          doc.text(v.name.slice(0, 22), 25, currentY);
+          doc.text(v.id, 75, currentY);
+          doc.text(v.email.slice(0, 26), 110, currentY);
+          doc.text(v.hasVoted ? 'CASTED' : 'PENDING', 165, currentY);
+          doc.text(v.password, 185, currentY);
+          
+          doc.line(12, currentY + 2, 198, currentY + 2);
+          currentY += 8;
+        });
+
+        doc.save('Registered_Voters_Report.pdf');
+        triggerAlert('System registry PDF report exported.', 'success');
+      } catch (err) {
+        triggerAlert('Failed to generate PDF registry.', 'error');
+        console.error(err);
+      }
+    };
+
+    if (!window.jspdf) {
+      const script = document.createElement('script');
+      script.src = scriptUrl;
+      script.onload = generateRegistryDoc;
+      document.body.appendChild(script);
+    } else {
+      generateRegistryDoc();
+    }
+  };
+
+  const electionStart = new Date(electionConfig.startTime);
+  const electionEnd = new Date(electionConfig.endTime);
+  const isElectionUpcoming = currentTime < electionStart;
+  const isElectionEnded = currentTime > electionEnd;
+  const isElectionOpen = !isElectionUpcoming && !isElectionEnded;
+
+  const getElectionStatusLabel = () => {
+    if (isElectionUpcoming) return '🔴 UPCOMING';
+    if (isElectionEnded) return '🏁 ENDED';
+    return '🟢 ACTIVE & ONGOING';
+  };
+
   const isDark = theme === 'dark';
   const s = {
     bgMain: isDark ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-900',
@@ -490,7 +683,7 @@ export default function App() {
   return (
     <div className={`min-h-screen ${s.bgMain} flex flex-col justify-between selection:bg-teal-500 selection:text-slate-900 transition-colors duration-200`}>
       
-      {}
+      {/* Header Bar */}
       <header className={`${s.bgHeader} border-b py-4 px-6 sticky top-0 z-40 backdrop-blur-md transition-colors duration-200`}>
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => setAppMode('gate')}>
@@ -506,7 +699,7 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
-            {}
+            {/* Dark Mode Switcher */}
             <button
               onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
               className={`p-2 rounded-lg border transition-all ${s.bgButtonSec}`}
@@ -535,7 +728,7 @@ export default function App() {
         </div>
       </header>
 
-      {}
+      {/* Alert Overlay */}
       {alert && (
         <div className="fixed top-20 right-4 left-4 md:left-auto md:w-96 z-50 animate-bounce">
           <div className={`p-4 rounded-xl shadow-xl flex items-start gap-3 border ${alert.type === 'success' ? 'bg-emerald-950 border-emerald-500 text-emerald-300' : alert.type === 'error' ? 'bg-red-950 border-red-500 text-red-300' : 'bg-blue-950 border-blue-500 text-blue-300'}`}>
@@ -554,7 +747,7 @@ export default function App() {
         </div>
       )}
 
-      {}
+      {/* Main Container */}
       <main className="flex-grow max-w-5xl mx-auto w-full px-4 py-8">
         
         {/* --- VIEW: MAIN PORTAL GATEWAY --- */}
@@ -614,7 +807,7 @@ export default function App() {
         {appMode === 'voter' && (
           <div className="space-y-6">
             
-            {}
+            {/* View Tab A1: Voter Login */}
             {voterTab === 'login' && (
               <div className={`max-w-md mx-auto p-6 rounded-2xl border relative ${s.bgCard}`}>
                 <div className="text-center mb-6">
@@ -627,7 +820,7 @@ export default function App() {
 
                 <form onSubmit={handleVoterLogin} className="space-y-4">
                   <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student ID / Matric No</label>
+                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student ID / Matric No / NIN</label>
                     <input 
                       type="text" 
                       value={loginForm.id} 
@@ -663,7 +856,7 @@ export default function App() {
                   </div>
                 </form>
 
-                {}
+                {/* Instant Check Vote Status Block */}
                 <div className={`mt-8 pt-6 border-t ${s.borderSub}`}>
                   <h4 className={`text-xs font-bold uppercase tracking-widest mb-2.5 ${s.textMuted}`}>Instant Check-Vote Status</h4>
                   <form onSubmit={handleInspectVoterStatus} className="flex gap-2">
@@ -682,7 +875,7 @@ export default function App() {
                   {searchedVoter && (
                     <div className={`mt-4 p-3 rounded-lg border text-xs ${s.bgCard}`}>
                       {searchedVoter.notFound ? (
-                        <p className="text-red-500 font-medium">❌ Voter not found.</p>
+                        <p className="text-red-500 font-medium">❌ ID/NIN not registered on ledger database.</p>
                       ) : (
                         <div className="space-y-1.5">
                           <p className="text-teal-400 font-bold">Voter: {searchedVoter.name}</p>
@@ -706,7 +899,7 @@ export default function App() {
               </div>
             )}
 
-            {}
+            {/* View Tab A2: Voter Register */}
             {voterTab === 'register' && (
               <div className={`max-w-md mx-auto p-6 rounded-2xl border shadow-2xl ${s.bgCard}`}>
                 <div className="text-center mb-6">
@@ -715,6 +908,10 @@ export default function App() {
                 </div>
 
                 <form onSubmit={handleVoterRegister} className="space-y-4">
+                  <div className="bg-blue-950/20 border border-blue-500/20 p-3 rounded-xl text-[11px] leading-normal text-blue-300">
+                    💡 <strong>Note:</strong> Your ID / NIN must be whitelisted in the Admin Panel to register.
+                  </div>
+
                   <div>
                     <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student Name</label>
                     <input 
@@ -728,7 +925,7 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student ID / Registration No</label>
+                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student ID / Matric No / NIN</label>
                     <input 
                       type="text" 
                       value={regForm.id} 
@@ -800,7 +997,7 @@ export default function App() {
               </div>
             )}
 
-            {}
+            {/* View Tab A3: Forgot Password DOB Bypass */}
             {voterTab === 'forgot' && (
               <div className={`max-w-md mx-auto p-6 rounded-2xl border ${s.bgCard}`}>
                 <div className="text-center mb-6">
@@ -810,7 +1007,7 @@ export default function App() {
 
                 <form onSubmit={handleDOBPasswordRecovery} className="space-y-4">
                   <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student ID</label>
+                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student ID / Matric / NIN</label>
                     <input 
                       type="text" 
                       value={resetForm.id} 
@@ -862,7 +1059,7 @@ export default function App() {
               </div>
             )}
 
-            {}
+            {/* View Tab A4: First Login Credential Modification */}
             {voterTab === 'first-login-reset' && currentVoter && (
               <div className={`max-w-md mx-auto p-6 rounded-2xl border ${s.bgCard}`}>
                 <div className="text-center mb-6">
@@ -928,7 +1125,7 @@ export default function App() {
               </div>
             )}
 
-            {}
+            {/* View Tab A5: Voter Main Command Dashboard */}
             {voterTab === 'dashboard' && currentVoter && (
               <div className="space-y-6">
                 
@@ -956,9 +1153,25 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Central Election Metadata Widget */}
+                <div className={`p-5 rounded-2xl border ${s.bgCard} flex flex-col md:flex-row justify-between items-start md:items-center gap-4`}>
+                  <div>
+                    <span className="text-[10px] uppercase font-bold tracking-widest text-teal-400">Target Election Objective</span>
+                    <h3 className="text-lg font-extrabold">{electionConfig.name}</h3>
+                    <p className={`text-xs mt-1 ${s.textMuted}`}>
+                      Schedule: <strong className={s.textMain}>{new Date(electionConfig.startTime).toLocaleString()}</strong> to <strong className={s.textMain}>{new Date(electionConfig.endTime).toLocaleString()}</strong>
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className={`px-3 py-1.5 rounded-full text-xs font-extrabold border ${isElectionOpen ? 'bg-emerald-950/50 border-emerald-500 text-emerald-400' : 'bg-red-950/50 border-red-500 text-red-400'}`}>
+                      {getElectionStatusLabel()}
+                    </span>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   
-                  {}
+                  {/* Left Column: Voter Ledger Verification status */}
                   <div className={`p-6 rounded-2xl border flex flex-col justify-between ${s.bgCard}`}>
                     <div className="space-y-4">
                       <h3 className={`text-xs uppercase tracking-widest font-extrabold ${s.textMuted}`}>Ledger Status Audit</h3>
@@ -979,12 +1192,12 @@ export default function App() {
                           </svg>
                           Download Verification PDF
                         </button>
-                        <p className={`text-[10px] text-center leading-normal ${s.textMuted}`}>Keep this document as physical proof of audit ledger transaction inclusion.</p>
+                        <p className={`text-[10px] text-center leading-normal ${s.textMuted}`}>Keep this document as proof of audit ledger transaction inclusion.</p>
                       </div>
                     )}
                   </div>
 
-                  {}
+                  {/* Right Column: Ballot selection matrix */}
                   <div className={`md:col-span-2 p-6 rounded-2xl border ${s.bgCard}`}>
                     {!currentVoter.hasVoted ? (
                       <div className="space-y-6">
@@ -994,7 +1207,14 @@ export default function App() {
                           <p className={`text-xs mt-0.5 ${s.textMuted}`}>Make your selection for all open positions. Blank categories represent abstentions.</p>
                         </div>
 
-                        {positions.length === 0 ? (
+                        {!isElectionOpen ? (
+                          <div className="text-center py-12 px-6 border border-dashed border-red-500/30 rounded-2xl bg-red-950/10 text-red-400 space-y-2">
+                            <p className="text-base font-black uppercase tracking-widest">🛑 BALLOT GATE LOCK</p>
+                            <p className="text-xs leading-relaxed max-w-sm mx-auto">
+                              You cannot cast ballots outside election schedule times. The ballot box will dynamically unlock during active parameters.
+                            </p>
+                          </div>
+                        ) : positions.length === 0 ? (
                           <div className={`text-center py-12 ${s.textMuted}`}>
                             <p className="text-sm font-semibold">No active election structures currently published on this node.</p>
                             <p className="text-xs">Access the Administrator Panel node to generate positions and candidates.</p>
@@ -1019,7 +1239,7 @@ export default function App() {
                                           className={`w-full text-left p-4 rounded-xl border transition flex justify-between items-center ${
                                             isSel 
                                               ? 'bg-teal-500/10 border-teal-500 text-teal-400 font-bold' 
-                                              : isDark ? 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-700'
+                                              : isDark ? 'bg-slate-900 border-slate-880 hover:border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-700'
                                           }`}
                                         >
                                           <div>
@@ -1099,7 +1319,7 @@ export default function App() {
         {appMode === 'admin' && (
           <div className="space-y-6">
             
-            {}
+            {/* View Tab B1: Admin Node Pass Authenticate */}
             {!isAdminAuthenticated ? (
               <div className={`max-w-md mx-auto p-6 rounded-2xl border relative ${s.bgCard}`}>
                 <div className="text-center mb-6">
@@ -1135,7 +1355,7 @@ export default function App() {
             ) : (
               <div className="space-y-6">
                 
-                {/* Admin Ribbon Banner */}
+                {/* Admin Command Header Ribbon */}
                 <div className={`p-6 rounded-2xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 ${s.bgCard}`}>
                   <div>
                     <h2 className="text-2xl font-black text-blue-400">Election Audit Command Node</h2>
@@ -1164,57 +1384,74 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Subnavigation Headers */}
-                <div className="flex gap-2 border-b pb-px border-slate-700">
-                  {['audit', 'candidates', 'voters'].map((tab) => (
+                {/* Sub-Navigation Controls */}
+                <div className="flex flex-wrap gap-2 border-b pb-px border-slate-700 overflow-x-auto">
+                  {[
+                    { key: 'audit', label: '📊 Live Tallies' },
+                    { key: 'election', label: '⚙️ Election Parameters' },
+                    { key: 'candidates', label: '🛠️ Ballot Designer' },
+                    { key: 'voters', label: '👤 Voter Registry Audit' },
+                    { key: 'whitelist', label: '🛡️ Whitelist Database' }
+                  ].map((tab) => (
                     <button
-                      key={tab}
-                      onClick={() => setAdminTab(tab)}
-                      className={`px-4 py-2 text-xs font-bold uppercase tracking-wider transition border-b-2 -mb-px ${
-                        adminTab === tab 
+                      key={tab.key}
+                      onClick={() => setAdminTab(tab.key)}
+                      className={`px-4 py-2 text-xs font-bold uppercase tracking-wider transition border-b-2 -mb-px whitespace-nowrap ${
+                        adminTab === tab.key 
                           ? 'border-blue-500 text-blue-400 font-extrabold' 
                           : 'border-transparent text-slate-500 hover:text-slate-300'
                       }`}
                     >
-                      {tab === 'audit' ? '📊 Live Tallies' : tab === 'candidates' ? '🛠️ Ballot Designer' : '👤 Voter Registry Audit'}
+                      {tab.label}
                     </button>
                   ))}
                 </div>
 
-                {}
+                {/* Sub-View B2: Live Tallies Audit */}
                 {adminTab === 'audit' && (
                   <div className="space-y-6">
                     
-                    {/* Live Metric Stats Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                      <div className={`p-5 rounded-xl border text-center ${s.bgCard}`}>
+                    {/* Live Statistics Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className={`p-4 rounded-xl border text-center ${s.bgCard}`}>
                         <p className={`text-[10px] uppercase tracking-widest font-mono ${s.textMuted}`}>Enrolled Voters</p>
-                        <p className="text-3xl font-black mt-2 font-mono">{voters.length}</p>
+                        <p className="text-3xl font-black mt-1 font-mono">{voters.length}</p>
                       </div>
 
-                      <div className={`p-5 rounded-xl border text-center ${s.bgCard}`}>
+                      <div className={`p-4 rounded-xl border text-center ${s.bgCard}`}>
                         <p className={`text-[10px] uppercase tracking-widest font-mono ${s.textMuted}`}>Casted Ballots</p>
-                        <p className="text-3xl font-black text-teal-400 mt-2 font-mono">
+                        <p className="text-3xl font-black text-teal-400 mt-1 font-mono">
                           {voters.filter(v => v.hasVoted).length}
                         </p>
                       </div>
 
-                      <div className={`p-5 rounded-xl border text-center ${s.bgCard}`}>
+                      <div className={`p-4 rounded-xl border text-center ${s.bgCard}`}>
                         <p className={`text-[10px] uppercase tracking-widest font-mono ${s.textMuted}`}>Turnout Percentage</p>
-                        <p className="text-3xl font-black text-blue-400 mt-2 font-mono">
+                        <p className="text-3xl font-black text-blue-400 mt-1 font-mono">
                           {voters.length > 0 ? `${Math.round((voters.filter(v => v.hasVoted).length / voters.length) * 100)}%` : '0%'}
                         </p>
                       </div>
 
-                      <div className={`p-5 rounded-xl border text-center ${s.bgCard}`}>
-                        <p className={`text-[10px] uppercase tracking-widest font-mono ${s.textMuted}`}>Ecosystem Integrity</p>
-                        <p className="text-md font-black text-emerald-500 mt-4 uppercase tracking-widest">
-                          🛡️ TAMPER-PROOF
-                        </p>
+                      <div className={`p-4 rounded-xl border text-center ${s.bgCard}`}>
+                        <p className={`text-[10px] uppercase tracking-widest font-mono ${s.textMuted}`}>Whitelisted Keys</p>
+                        <p className="text-3xl font-black text-emerald-500 mt-1 font-mono">{whitelist.length}</p>
                       </div>
                     </div>
 
-                    {/* Dynamic Tally Outputs per position category */}
+                    {/* Active Election Config Banner */}
+                    <div className={`p-4 rounded-xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 ${s.bgCard}`}>
+                      <div>
+                        <span className="text-[10px] text-teal-400 uppercase tracking-widest font-mono font-bold">Active Parameter Broadcast</span>
+                        <h4 className="text-sm font-extrabold">{electionConfig.name}</h4>
+                      </div>
+                      <div>
+                        <span className={`px-2.5 py-1 text-[11px] rounded-full font-bold border ${isElectionOpen ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500' : 'bg-red-950/40 text-red-400 border-red-500'}`}>
+                          {getElectionStatusLabel()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Dynamic Tallies Grouped by Office Position */}
                     <div className={`p-6 rounded-2xl border space-y-6 ${s.bgCard}`}>
                       <h3 className={`text-sm font-bold uppercase tracking-widest ${s.textMuted}`}>Interactive Live Tally Output</h3>
                       
@@ -1266,11 +1503,70 @@ export default function App() {
                   </div>
                 )}
 
-                {}
+                {/* Sub-View B3: Election Creation Settings */}
+                {adminTab === 'election' && (
+                  <div className={`p-6 rounded-2xl border ${s.bgCard} max-w-xl mx-auto space-y-6`}>
+                    <div>
+                      <h3 className="text-md font-bold text-blue-400 uppercase tracking-wider">Configure Election Parameters</h3>
+                      <p className={`text-xs mt-1 ${s.textMuted}`}>Establish the master election header and the exact time gate logic to secure your voting session.</p>
+                    </div>
+
+                    <form onSubmit={handleUpdateElectionConfig} className="space-y-4">
+                      <div>
+                        <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Election Title / Header</label>
+                        <input 
+                          type="text" 
+                          value={electionConfig.name}
+                          onChange={e => setElectionConfig({ ...electionConfig, name: e.target.value })}
+                          className={`w-full p-3 rounded-xl text-xs outline-none border ${s.bgInput}`}
+                          placeholder="e.g. SUG Presidential Elections 2025/2026"
+                          required
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Start Date & Time</label>
+                          <input 
+                            type="datetime-local" 
+                            value={electionConfig.startTime}
+                            onChange={e => setElectionConfig({ ...electionConfig, startTime: e.target.value })}
+                            className={`w-full p-3 rounded-xl text-xs outline-none border ${s.bgInput}`}
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>End Date & Time</label>
+                          <input 
+                            type="datetime-local" 
+                            value={electionConfig.endTime}
+                            onChange={e => setElectionConfig({ ...electionConfig, endTime: e.target.value })}
+                            className={`w-full p-3 rounded-xl text-xs outline-none border ${s.bgInput}`}
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <button 
+                        type="submit" 
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs p-3 rounded-xl transition shadow"
+                      >
+                        Publish Election Window & Config
+                      </button>
+                    </form>
+
+                    <div className={`p-4 rounded-xl border text-xs leading-normal ${s.bgBanner}`}>
+                      <strong>Security Notice:</strong> The voter client application parses these parameters against its browser timestamp locally. Changing times here will immediately lock/unlock voting on all active browser tabs.
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-View B4: Ballot designer (Positions & Candidates) */}
                 {adminTab === 'candidates' && (
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     
-                    {/* Column 1: Manage Positions list */}
+                    {/* Block C1: Configure Positions */}
                     <div className={`p-6 rounded-2xl border space-y-4 h-fit ${s.bgCard}`}>
                       <h3 className="text-sm font-black text-blue-400 uppercase tracking-wider">Configure Positions</h3>
                       
@@ -1279,7 +1575,7 @@ export default function App() {
                           type="text" 
                           value={newPosition}
                           onChange={e => setNewPosition(e.target.value)}
-                          placeholder="e.g. Director of Sports"
+                          placeholder="e.g. Provost Marshal"
                           className={`px-3 py-2 text-xs rounded-lg flex-grow outline-none border ${s.bgInput}`}
                           required
                         />
@@ -1307,7 +1603,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Column 2: Upload/Add Candidates */}
+                    {/* Block C2: Create Candidate */}
                     <div className={`p-6 rounded-2xl border space-y-4 h-fit ${s.bgCard}`}>
                       <h3 className="text-sm font-black text-blue-400 uppercase tracking-wider">Add Candidate</h3>
                       
@@ -1375,7 +1671,7 @@ export default function App() {
                       </form>
                     </div>
 
-                    {/* Column 3: Active Registered Candidates Directory */}
+                    {/* Block C3: Active Directory */}
                     <div className={`p-6 rounded-2xl border space-y-4 ${s.bgCard}`}>
                       <h3 className="text-sm font-black text-blue-400 uppercase tracking-wider">Active Directory</h3>
                       
@@ -1405,20 +1701,33 @@ export default function App() {
                   </div>
                 )}
 
-                {}
+                {/* Sub-View B5: Voter Registry & Database Audit Sheet */}
                 {adminTab === 'voters' && (
                   <div className={`p-6 rounded-2xl border space-y-4 ${s.bgCard}`}>
-                    <h3 className={`text-sm font-bold uppercase tracking-widest ${s.textMuted}`}>Enrolled Database Record Sheets</h3>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <div>
+                        <h3 className={`text-sm font-bold uppercase tracking-widest ${s.textMuted}`}>Enrolled Database Record Sheets</h3>
+                        <p className={`text-xs ${s.textMuted}`}>Physical log file references representing students that finalized onboarding.</p>
+                      </div>
+
+                      <button 
+                        onClick={handleDownloadRegisteredListPDF}
+                        disabled={voters.length === 0}
+                        className="bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-2"
+                      >
+                        📥 Export PDF Registered List
+                      </button>
+                    </div>
                     
                     {voters.length === 0 ? (
                       <p className={`text-xs text-center py-6 italic ${s.textMuted}`}>No student voters stored in local databases.</p>
                     ) : (
                       <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs">
+                        <table className="w-full text-left text-xs min-w-[700px]">
                           <thead className={`text-[10px] uppercase tracking-wider border-b ${s.bgTableHead}`}>
                             <tr>
                               <th className="p-3">Student Name</th>
-                              <th className="p-3 font-mono">Student ID</th>
+                              <th className="p-3 font-mono">Student ID / NIN</th>
                               <th className="p-3">Email Address</th>
                               <th className="p-3">Date of Birth</th>
                               <th className="p-3 text-center">Status</th>
@@ -1447,6 +1756,80 @@ export default function App() {
                   </div>
                 )}
 
+                {/* Sub-View B6: Eligible Voter Whitelist Management */}
+                {adminTab === 'whitelist' && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    
+                    {/* Add Whitelist ID Panel */}
+                    <div className={`p-6 rounded-2xl border space-y-4 h-fit ${s.bgCard}`}>
+                      <div>
+                        <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider">Whitelist Identity Keys</h3>
+                        <p className={`text-xs mt-1 ${s.textMuted}`}>Add student matric IDs or NIN numbers to grant system registration rights.</p>
+                      </div>
+
+                      <form onSubmit={handleAddWhitelistId} className="space-y-3">
+                        <div>
+                          <label className={`block text-[10px] uppercase font-bold mb-1 ${s.textMuted}`}>Student ID / Matric / NIN</label>
+                          <input 
+                            type="text" 
+                            value={newWhitelistId}
+                            onChange={e => setNewWhitelistId(e.target.value)}
+                            placeholder="e.g. U15/CS/1004"
+                            className={`w-full px-3 py-2 text-xs rounded-lg outline-none border ${s.bgInput}`}
+                            required
+                          />
+                        </div>
+
+                        <button 
+                          type="submit" 
+                          className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs py-2.5 rounded-lg transition"
+                        >
+                          Whitelist Identity
+                        </button>
+                      </form>
+
+                      <div className={`p-3 rounded-lg border text-[10.5px] leading-normal ${s.bgBanner}`}>
+                        ⚠️ <strong>Identity Constraint:</strong> The Voter registration process validates this list. If a student's ID/NIN isn't whitelisted here, registration is locked.
+                      </div>
+                    </div>
+
+                    {/* Active Whitelisted List Panel */}
+                    <div className={`md:col-span-2 p-6 rounded-2xl border space-y-4 ${s.bgCard}`}>
+                      <div>
+                        <h3 className="text-sm font-bold uppercase tracking-widest">Pre-Eligible Whitelist Registry</h3>
+                        <p className={`text-xs ${s.textMuted}`}>Total Allowed Registrants: {whitelist.length}</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[400px] overflow-y-auto pr-1">
+                        {whitelist.length === 0 ? (
+                          <p className={`text-xs italic col-span-full ${s.textMuted}`}>No pre-eligible whitelist keys loaded.</p>
+                        ) : (
+                          whitelist.map(id => {
+                            const isRegistered = voters.some(v => v.id === id);
+                            return (
+                              <div key={id} className={`p-3 rounded-xl border flex justify-between items-center ${isDark ? 'bg-slate-900 border-slate-850' : 'bg-slate-50 border-slate-200'}`}>
+                                <div>
+                                  <span className="font-mono text-xs font-bold">{id}</span>
+                                  <p className={`text-[9px] font-bold ${isRegistered ? 'text-emerald-400' : 'text-amber-500'}`}>
+                                    {isRegistered ? '✅ Registered' : '⏳ Pending'}
+                                  </p>
+                                </div>
+                                <button 
+                                  onClick={() => handleDeleteWhitelistId(id)}
+                                  className="text-red-500 hover:text-red-400 text-[10px] font-bold"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+
               </div>
             )}
 
@@ -1455,13 +1838,13 @@ export default function App() {
 
       </main>
 
-      {}
+      {/* Footer Block */}
       <footer className={`${s.bgHeader} border-t py-6 px-6 mt-12 text-center text-xs transition-colors duration-200 ${s.textMuted} space-y-1`}>
         <p>© 2026 Web-Based Online Cryptographic Voting Prototype.</p>
         <p className="font-mono text-[10px] uppercase tracking-widest text-teal-500">Distributed Multi-Node Local Verification Terminal</p>
       </footer>
 
-      {/* --- CONFIRMATION DIALOG MODAL --- */}
+      {/* --- BALLOT CONFIRMATION MODAL --- */}
       {confirmVoteModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
           <div className={`border p-6 rounded-2xl max-w-sm w-full text-center space-y-4 shadow-2xl ${s.bgCard}`}>
