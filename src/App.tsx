@@ -811,323 +811,36 @@ export default function App() {
             {voterTab === 'login' && (
               <div className={`max-w-md mx-auto p-6 rounded-2xl border relative ${s.bgCard}`}>
                 <div className="text-center mb-6">
-                  <span className="text-[10px] uppercase tracking-widest font-mono bg-teal-500/10 text-teal-400 border border-teal-500/30 px-3 py-1 rounded-full">
-                    VOTER INTERFACE
-                  </span>
-                  <h2 className="text-2xl font-black mt-3">Voter Credentials Verification</h2>
-                  <p className={`text-xs mt-1 ${s.textMuted}`}>Access your ballot card and system credentials securely.</p>
-                </div>
+              <span className="text-[10px] uppercase tracking-widest font-mono bg-blue-500/10 text-blue-400 border border-blue-500/30 px-3 py-1 rounded-full">
+                ADMIN LOGIN GATEWAY
+              </span>
+              <h2 className="text-2xl font-black mt-3">Node Authority Access</h2>
+              <p className={`text-xs mt-1 ${s.textMuted}`}>Authenticate terminal using default system master keys.</p>
+            </div>
 
-                <form onSubmit={handleVoterLogin} className="space-y-4">
-                  <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student ID / Matric No / NIN</label>
-                    <input 
-                      type="text" 
-                      value={loginForm.id} 
-                      onChange={e => setLoginForm({ ...loginForm, id: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none transition text-sm font-mono placeholder-slate-400 border ${s.bgInput}`}
-                      placeholder="E.G. U15/CS/1001" 
-                      required 
-                    />
-                  </div>
-
-                  <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Access Key Password</label>
-                    <input 
-                      type="password" 
-                      value={loginForm.password} 
-                      onChange={e => setLoginForm({ ...loginForm, password: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none transition text-sm placeholder-slate-400 border ${s.bgInput}`}
-                      placeholder="••••••••" 
-                      required 
-                    />
-                  </div>
-
-                  <button 
-                    type="submit" 
-                    className="w-full bg-teal-500 hover:bg-teal-400 text-slate-950 p-3.5 rounded-xl font-bold transition text-sm shadow-lg shadow-teal-500/20"
-                  >
-                    Authenticate Private Key
-                  </button>
-
-                  <div className={`flex justify-between text-xs text-teal-400 font-medium pt-3 border-t ${s.borderSub}`}>
-                    <button type="button" onClick={() => setVoterTab('register')} className="hover:text-teal-500 hover:underline transition">Register Account</button>
-                    <button type="button" onClick={() => setVoterTab('forgot')} className="hover:text-teal-500 hover:underline transition">Reset Password</button>
-                  </div>
-                </form>
-
-                {/* Instant Check Vote Status Block */}
-                <div className={`mt-8 pt-6 border-t ${s.borderSub}`}>
-                  <h4 className={`text-xs font-bold uppercase tracking-widest mb-2.5 ${s.textMuted}`}>Instant Check-Vote Status</h4>
-                  <form onSubmit={handleInspectVoterStatus} className="flex gap-2">
-                    <input 
-                      type="text" 
-                      value={searchStatusQuery}
-                      onChange={e => setSearchStatusQuery(e.target.value)}
-                      placeholder="Enter Matric/ID..."
-                      className={`px-3 py-2 text-xs rounded-lg flex-grow outline-none font-mono border ${s.bgInput}`}
-                    />
-                    <button type="submit" className={`text-xs px-4 py-2 rounded-lg font-semibold transition border ${s.bgButtonSec}`}>
-                      Inspect
-                    </button>
-                  </form>
-
-                  {searchedVoter && (
-                    <div className={`mt-4 p-3 rounded-lg border text-xs ${s.bgCard}`}>
-                      {searchedVoter.notFound ? (
-                        <p className="text-red-500 font-medium">❌ ID/NIN not registered on ledger database.</p>
-                      ) : (
-                        <div className="space-y-1.5">
-                          <p className="text-teal-400 font-bold">Voter: {searchedVoter.name}</p>
-                          <div className="flex items-center gap-2">
-                            <span className={s.textMuted}>Ballot State:</span>
-                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${searchedVoter.hasVoted ? 'bg-emerald-950/60 text-emerald-300' : 'bg-amber-950/60 text-amber-300'}`}>
-                              {searchedVoter.hasVoted ? 'CASTED' : 'PENDING'}
-                            </span>
-                          </div>
-                          {searchedVoter.hasVoted && (
-                            <>
-                              <p className={s.textMain}>Timestamp: <span className="font-mono text-teal-400 font-semibold">{searchedVoter.timestamp}</span></p>
-                              <p className={`text-[10px] break-all font-mono ${s.textMuted}`}>Signature: {searchedVoter.receiptHash}</p>
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+            <form onSubmit={handleAdminAuthSubmit} className="space-y-4">
+              <div>
+                <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Master Passphrase</label>
+                <input 
+                  type="password" 
+                  value={adminPass} 
+                  onChange={e => setAdminPass(e.target.value)} 
+                  className={`w-full p-3 rounded-xl outline-none transition text-sm text-center tracking-widest border ${s.bgInput}`}
+                  placeholder="••••••••" 
+                  required 
+                />
               </div>
-            )}
 
-            {/* View Tab A2: Voter Register */}
-            {voterTab === 'register' && (
-              <div className={`max-w-md mx-auto p-6 rounded-2xl border shadow-2xl ${s.bgCard}`}>
-                <div className="text-center mb-6">
-                  <h2 className="text-2xl font-black text-teal-400">Voter Onboarding Card</h2>
-                  <p className={`text-xs mt-1 ${s.textMuted}`}>Register on the database nodes to generate your validation credentials.</p>
-                </div>
-
-                <form onSubmit={handleVoterRegister} className="space-y-4">
-                  <div className="bg-blue-950/20 border border-blue-500/20 p-3 rounded-xl text-[11px] leading-normal text-blue-300">
-                    💡 <strong>Note:</strong> Your ID / NIN must be whitelisted in the Admin Panel to register.
-                  </div>
-
-                  <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student Name</label>
-                    <input 
-                      type="text" 
-                      value={regForm.name} 
-                      onChange={e => setRegForm({ ...regForm, name: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
-                      placeholder="e.g. Ibrahim Abubakar" 
-                      required 
-                    />
-                  </div>
-
-                  <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student ID / Matric No / NIN</label>
-                    <input 
-                      type="text" 
-                      value={regForm.id} 
-                      onChange={e => setRegForm({ ...regForm, id: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm font-mono border ${s.bgInput}`}
-                      placeholder="e.g. U15/CS/1001" 
-                      required 
-                    />
-                  </div>
-
-                  <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>School Email Address</label>
-                    <input 
-                      type="email" 
-                      value={regForm.email} 
-                      onChange={e => setRegForm({ ...regForm, email: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
-                      placeholder="e.g. student@university.edu.ng" 
-                      required 
-                    />
-                  </div>
-
-                  <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Date of Birth (Identity Verification)</label>
-                    <input 
-                      type="date" 
-                      value={regForm.dob} 
-                      onChange={e => setRegForm({ ...regForm, dob: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
-                      required 
-                    />
-                  </div>
-
-                  <button 
-                    type="submit" 
-                    className="w-full bg-gradient-to-r from-teal-500 to-blue-600 hover:from-teal-400 hover:to-blue-500 text-slate-950 p-3.5 rounded-xl font-bold transition text-sm shadow"
-                  >
-                    Enroll Credentials
-                  </button>
-
-                  {generatedPass && (
-                    <div className="bg-teal-950/40 border border-teal-500/40 p-4 rounded-xl space-y-2 mt-4">
-                      <p className="text-xs font-bold text-teal-400 uppercase tracking-widest">⚠️ CREDENTIALS REGISTERED</p>
-                      <p className="text-xs text-slate-300">Copy this auto-generated temporary key securely. You must replace it upon first-time node access authentication.</p>
-                      <div className={`flex items-center justify-between p-3 rounded-lg border ${s.bgCard}`}>
-                        <span className="font-mono text-lg font-black text-emerald-400 tracking-widest">{generatedPass}</span>
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(generatedPass);
-                            triggerAlert('Key copied successfully!', 'success');
-                          }}
-                          className="text-[10px] bg-slate-850 hover:bg-slate-700 text-slate-300 py-1.5 px-3 rounded font-mono border border-slate-700"
-                        >
-                          Copy Key
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  <button 
-                    type="button" 
-                    onClick={() => { setVoterTab('login'); setGeneratedPass(''); }} 
-                    className={`w-full text-center text-xs hover:text-teal-500 hover:underline block pt-2 ${s.textMuted}`}
-                  >
-                    Already Registered? Go to Login
-                  </button>
-                </form>
-              </div>
-            )}
-
-            {/* View Tab A3: Forgot Password DOB Bypass */}
-            {voterTab === 'forgot' && (
-              <div className={`max-w-md mx-auto p-6 rounded-2xl border ${s.bgCard}`}>
-                <div className="text-center mb-6">
-                  <h2 className="text-2xl font-black text-teal-400">Identity Recovery Console</h2>
-                  <p className={`text-xs mt-1 ${s.textMuted}`}>Confirm DOB verification matrix to input your desired password override.</p>
-                </div>
-
-                <form onSubmit={handleDOBPasswordRecovery} className="space-y-4">
-                  <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student ID / Matric / NIN</label>
-                    <input 
-                      type="text" 
-                      value={resetForm.id} 
-                      onChange={e => setResetForm({ ...resetForm, id: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm font-mono border ${s.bgInput}`}
-                      placeholder="E.G. U15/CS/1001" 
-                      required 
-                    />
-                  </div>
-
-                  <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Registered Date of Birth</label>
-                    <input 
-                      type="date" 
-                      value={resetForm.dob} 
-                      onChange={e => setResetForm({ ...resetForm, dob: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
-                      required 
-                    />
-                  </div>
-
-                  <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Input New Desired Password</label>
-                    <input 
-                      type="password" 
-                      value={resetForm.newPassword} 
-                      onChange={e => setResetForm({ ...resetForm, newPassword: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
-                      placeholder="Minimum 4 characters" 
-                      required 
-                    />
-                  </div>
-
-                  <button 
-                    type="submit" 
-                    className="w-full bg-blue-600 hover:bg-blue-500 text-white p-3.5 rounded-xl font-bold transition text-sm"
-                  >
-                    Save & Authenticate Override
-                  </button>
-
-                  <button 
-                    type="button" 
-                    onClick={() => setVoterTab('login')} 
-                    className={`w-full text-center text-xs text-slate-400 hover:text-teal-500 hover:underline block pt-2`}
-                  >
-                    Cancel
-                  </button>
-                </form>
-              </div>
-            )}
-
-            {/* View Tab A4: First Login Credential Modification */}
-            {voterTab === 'first-login-reset' && currentVoter && (
-              <div className={`max-w-md mx-auto p-6 rounded-2xl border ${s.bgCard}`}>
-                <div className="text-center mb-6">
-                  <span className="bg-teal-500/10 text-teal-400 text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full font-bold border border-teal-500/30">
-                    MANDATORY SECURITY COMPLIANCE
-                  </span>
-                  <h2 className="text-2xl font-black mt-3">Configure Custom Credentials</h2>
-                  <p className={`text-xs mt-1 ${s.textMuted}`}>Confirm temporary credentials to apply your custom chosen password block.</p>
-                </div>
-
-                <form onSubmit={handleFirstLoginCustomization} className="space-y-4">
-                  <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Confirm Generated Key</label>
-                    <input 
-                      type="password" 
-                      value={firstResetForm.currentPassword} 
-                      onChange={e => setFirstResetForm({ ...firstResetForm, currentPassword: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm font-mono border ${s.bgInput}`}
-                      placeholder="Paste your copied generated password" 
-                      required 
-                    />
-                  </div>
-
-                  <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Input Custom Desired Password</label>
-                    <input 
-                      type="password" 
-                      value={firstResetForm.newPassword} 
-                      onChange={e => setFirstResetForm({ ...firstResetForm, newPassword: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
-                      placeholder="Create security password code" 
-                      required 
-                    />
-                  </div>
-
-                  <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Confirm Custom Password</label>
-                    <input 
-                      type="password" 
-                      value={firstResetForm.confirmPassword} 
-                      onChange={e => setFirstResetForm({ ...firstResetForm, confirmPassword: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
-                      placeholder="Re-type code" 
-                      required 
-                    />
-                  </div>
-
-                  <button 
-                    type="submit" 
-                    className="w-full bg-teal-500 hover:bg-teal-400 text-slate-950 p-3.5 rounded-xl font-bold transition text-sm shadow-lg shadow-teal-500/15"
-                  >
-                    Commit Security Credentials
-                  </button>
-
-                  <button 
-                    type="button" 
-                    onClick={() => handleVoterLogout('Setup cancelled. Authentication required.')} 
-                    className={`w-full text-center text-xs hover:text-teal-500 hover:underline block pt-2 ${s.textMuted}`}
-                  >
-                    Sign Out & Postpone
-                  </button>
-                </form>
-              </div>
-            )}
-
-            {/* View Tab A5: Voter Main Command Dashboard */}
-            {voterTab === 'dashboard' && currentVoter && (
-              <div className="space-y-6">
+              <button 
+                type="submit" 
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white p-3.5 rounded-xl font-bold transition text-sm shadow"
+              >
+                Unlock Administrative Node
+              </button>
+            </form>
+          </div>
+        ) : (
+          <div className="space-y-6">
                 
                 {/* Voter Profile Banner */}
                 <div className={`p-6 rounded-2xl border flex flex-col md:flex-row justify-between md:items-center gap-6 relative overflow-hidden ${s.bgCard}`}>
