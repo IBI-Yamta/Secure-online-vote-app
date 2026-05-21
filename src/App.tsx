@@ -1341,7 +1341,7 @@ export default function App() {
                       placeholder="••••••••" 
                       required 
                     />
-                    <p className={`text-[10px] mt-1 text-center ${s.textMuted}`}> Use Admin default code: <strong className="font-mono text-teal-400">Password</strong></p>
+                    <p className={`text-[10px] mt-1 text-center ${s.textMuted}`}> Use Admin default code</p>
                   </div>
 
                   <button 
