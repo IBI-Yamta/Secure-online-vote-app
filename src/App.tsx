@@ -1029,8 +1029,43 @@ export default function App() {
         )}
 
         {/* --- PORTAL B: ADMINISTRATOR PORTAL --- */}
-        {appMode === 'admin' && (
-          <div className="space-y-6">
+{appMode === 'admin' && (
+  <div className="space-y-6">
+    
+    {/* View Tab B1: Admin Node Pass Authenticate */}
+    {!isAdminAuthenticated ? (
+      <div className={`max-w-md mx-auto p-6 rounded-2xl border relative ${s.bgCard}`}>
+        <div className="text-center mb-6">
+          <span className="text-[10px] uppercase tracking-widest font-mono bg-blue-500/10 text-blue-400 border border-blue-500/30 px-3 py-1 rounded-full">
+            ADMIN LOGIN GATEWAY
+          </span>
+          <h2 className="text-2xl font-black mt-3">Node Authority Access</h2>
+          <p className={`text-xs mt-1 ${s.textMuted}`}>Authenticate terminal using default system master keys.</p>
+        </div>
+
+        <form onSubmit={handleAdminAuthSubmit} className="space-y-4">
+          <div>
+            <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Master Passphrase</label>
+            <input 
+              type="password" 
+              value={adminPass} 
+              onChange={e => setAdminPass(e.target.value)} 
+              className={`w-full p-3 rounded-xl outline-none transition text-sm text-center tracking-widest border ${s.bgInput}`}
+              placeholder="••••••••" 
+              required 
+            />
+          </div>
+
+          <button 
+            type="submit" 
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white p-3.5 rounded-xl font-bold transition text-sm shadow"
+          >
+            Unlock Administrative Node
+          </button>
+        </form>
+      </div>
+    ) : (
+      <div className="space-y-6">
             
             {/* View Tab B1: Admin Node Pass Authenticate */}
             {!isAdminAuthenticated ? (
@@ -1054,7 +1089,6 @@ export default function App() {
                       placeholder="••••••••" 
                       required 
                     />
-                    <p className={`text-[10px] mt-1 text-center ${s.textMuted}`}>For simulation, use default code: <strong className="font-mono text-teal-400">ADMIN2026</strong></p>
                   </div>
 
                   <button 
