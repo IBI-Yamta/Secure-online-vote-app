@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// Safe loading of system environment variables
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'secure-vote-node';
 let firebaseConfig = {};
 try {
@@ -14,11 +13,33 @@ try {
   console.error("Firebase config parsing error:", e);
 }
 
-export default function App() {
-  const [dbConnected, setDbConnected] = useState(false);
-  const [user, setUser] = useState(null);
+let cachedDb = null;
+let cachedAuth = null;
 
-  // --- DEFAULT DATA STRUCTURES FOR FALLBACK & SEEDING ---
+const initFirebase = () => {
+  if (cachedDb && cachedAuth) {
+    return { db: cachedDb, auth: cachedAuth };
+  }
+  if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
+    return { db: null, auth: null };
+  }
+  try {
+    let app;
+    if (getApps().length === 0) {
+      app = initializeApp(firebaseConfig);
+    } else {
+      app = getApp();
+    }
+    cachedDb = getFirestore(app);
+    cachedAuth = getAuth(app);
+    return { db: cachedDb, auth: cachedAuth };
+  } catch (err) {
+    console.error("Firebase safe recovery failed:", err);
+    return { db: null, auth: null };
+  }
+};
+
+export default function App() {
   const DEFAULT_POSITIONS = ['President', 'Secretary General', 'Treasurer'];
   const DEFAULT_CANDIDATES = [
     { id: 'c1', name: 'Comrade Yusuf Bello', post: 'President', association: 'NANS', votes: 0, color: 'bg-blue-600' },
@@ -33,6 +54,8 @@ export default function App() {
     endTime: new Date(Date.now() + 86400000).toISOString().slice(0, 16)
   };
 
+  const [dbConnected, setDbConnected] = useState(false);
+  const [user, setUser] = useState(null);
   const [appMode, setAppMode] = useState(() => localStorage.getItem('evote_mode') || 'gate');
   const [theme, setTheme] = useState(() => localStorage.getItem('evote_theme') || 'dark');
   const [positions, setPositions] = useState(DEFAULT_POSITIONS);
@@ -72,9 +95,8 @@ export default function App() {
   useEffect(() => {
     if (Object.keys(firebaseConfig).length === 0) return;
     try {
-      const app = initializeApp(firebaseConfig);
-      const db = getFirestore(app);
-      const auth = getAuth(app);
+      const { auth } = initFirebase();
+      if (!auth) return;
 
       const authenticate = async () => {
         try {
@@ -98,16 +120,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!dbConnected || Object.keys(firebaseConfig).length === 0) return;
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    const { db } = initFirebase();
+    if (!db || !dbConnected) return;
 
     // Sync Election Parameters Configuration
     const unsubscribeConfig = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'election'), (snapshot) => {
       if (snapshot.exists()) {
         setElectionConfig(snapshot.data());
       } else {
-        // Seed default parameters if config collection is empty
         setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'election'), DEFAULT_ELECTION);
       }
     }, (error) => console.error("Election parameter stream error:", error));
@@ -144,7 +164,6 @@ export default function App() {
       if (snapshot.exists()) {
         const remoteVoters = snapshot.data().list || [];
         setVoters(remoteVoters);
-        // Sync voter session profile in real-time
         if (currentVoter) {
           const freshVoter = remoteVoters.find(v => v.id === currentVoter.id);
           if (freshVoter) {
@@ -186,7 +205,6 @@ export default function App() {
     }
   }, [currentVoter]);
 
-  // Real-time ticking time updater
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
@@ -225,40 +243,40 @@ export default function App() {
   const savePositionsToCloud = async (updatedList) => {
     setPositions(updatedList);
     if (!dbConnected) return;
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    const { db } = initFirebase();
+    if (!db) return;
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'positions'), { list: updatedList });
   };
 
   const saveCandidatesToCloud = async (updatedList) => {
     setCandidates(updatedList);
     if (!dbConnected) return;
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    const { db } = initFirebase();
+    if (!db) return;
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'candidates'), { list: updatedList });
   };
 
   const saveWhitelistToCloud = async (updatedList) => {
     setWhitelist(updatedList);
     if (!dbConnected) return;
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    const { db } = initFirebase();
+    if (!db) return;
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'whitelist'), { list: updatedList });
   };
 
   const saveElectionConfigToCloud = async (updatedConfig) => {
     setElectionConfig(updatedConfig);
     if (!dbConnected) return;
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    const { db } = initFirebase();
+    if (!db) return;
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'election'), updatedConfig);
   };
 
   const saveVotersToCloud = async (updatedList) => {
     setVoters(updatedList);
     if (!dbConnected) return;
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    const { db } = initFirebase();
+    if (!db) return;
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'voters'), { list: updatedList });
   };
 
@@ -409,7 +427,7 @@ export default function App() {
     const receiptCode = 'SEC-REC-' + Math.random().toString(36).substring(2, 10).toUpperCase() + '-' + Math.floor(Math.random() * 9000 + 1000);
     const voteTime = new Date().toLocaleString();
 
-    // Increment Candidates Tally in database
+    // Increment Candidates Tally safely
     const updatedCandidates = candidates.map(cand => {
       const selectedForPost = ballotSelections[cand.post];
       if (selectedForPost && selectedForPost.id === cand.id) {
@@ -419,6 +437,7 @@ export default function App() {
     });
     await saveCandidatesToCloud(updatedCandidates);
 
+    // Dynamic Abstain compilation prevents unselected blockages
     const selectionsSummary = positions.map(pos => `${pos}: ${ballotSelections[pos]?.name || 'Abstained'}`).join(' | ');
 
     const updatedVoters = voters.map(v => {
@@ -741,7 +760,8 @@ export default function App() {
     bgTableHead: isDark ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500',
   };
 
-  const isBallotComplete = positions.every(pos => ballotSelections[pos] !== undefined);
+  // Ballot is fully complete when positions exist. Unselected entries register as Abstained.
+  const isBallotComplete = positions.length > 0;
 
   return (
     <div className={`min-h-screen ${s.bgMain} flex flex-col justify-between selection:bg-teal-500 selection:text-slate-900 transition-colors duration-200`}>
@@ -973,7 +993,7 @@ export default function App() {
                             </div>
                             {searchedVoter.hasVoted && (
                               <div className="pt-2 space-y-1 text-[11px]">
-                                <p className="text-emerald-400">Timestamp: {searchedVoter.timestamp}</p>
+                                <p className="text-emerald-400 font-sans">Timestamp: {searchedVoter.timestamp}</p>
                                 <p className="text-[10px] opacity-75 truncate" title={searchedVoter.receiptHash}>Signature: {searchedVoter.receiptHash}</p>
                               </div>
                             )}
@@ -1348,7 +1368,7 @@ export default function App() {
                                     : 'bg-slate-300 dark:bg-slate-800 border dark:border-slate-700 text-slate-500 cursor-not-allowed'
                                 }`}
                               >
-                                {isBallotComplete ? 'Submit Complete Ballot' : 'Complete Ballot Choices to Submit'}
+                                {isBallotComplete ? 'Submit Ballot Choices' : 'Ballot Empty'}
                               </button>
                             </div>
                           </>
@@ -1558,7 +1578,7 @@ export default function App() {
                                             </div>
                                             <span className="font-mono font-bold">{cand.votes} votes ({percentage}%)</span>
                                           </div>
-                                          <div className={`w-full rounded-full h-3.5 overflow-hidden border ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
+                                          <div className={`w-full rounded-full h-3.5 overflow-hidden border ${isDark ? 'bg-slate-900 border-slate-880' : 'bg-slate-100 border-slate-200'}`}>
                                             <div 
                                               className={`h-full rounded-full transition-all duration-500 ${cand.color}`} 
                                               style={{ width: `${percentage}%` }}
