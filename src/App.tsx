@@ -1,54 +1,45 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+// Safe loading of system environment variables
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'secure-vote-node';
+let firebaseConfig = {};
+try {
+  if (typeof __firebase_config !== 'undefined') {
+    firebaseConfig = JSON.parse(__firebase_config);
+  }
+} catch (e) {
+  console.error("Firebase config parsing error:", e);
+}
 
 export default function App() {
-  // --- DEFAULT DATA FOR SIMULATION & PROJECT DEFENSE ---
-  const DEFAULT_POSITIONS = ['President', 'Secretary General', 'Treasurer'];
+  const [dbConnected, setDbConnected] = useState(false);
+  const [user, setUser] = useState(null);
 
+  // --- DEFAULT DATA STRUCTURES FOR FALLBACK & SEEDING ---
+  const DEFAULT_POSITIONS = ['President', 'Secretary General', 'Treasurer'];
   const DEFAULT_CANDIDATES = [
     { id: 'c1', name: 'Comrade Yusuf Bello', post: 'President', association: 'NANS', votes: 0, color: 'bg-blue-600' },
     { id: 'c2', name: 'Chinwe Okeke', post: 'President', association: 'NANS', votes: 0, color: 'bg-emerald-600' },
     { id: 'c3', name: 'Ibrahim Musa', post: 'Secretary General', association: 'NANS', votes: 0, color: 'bg-amber-600' },
     { id: 'c4', name: 'Sarah Udoh', post: 'Secretary General', association: 'NANS', votes: 0, color: 'bg-pink-600' }
   ];
-
-  const DEFAULT_WHITELIST = [
-    'U15/CS/1001', 'U15/CS/1002', 'U15/CS/1003', 'U15/CS/1004', 'NIN20268899', 'NIN20265544'
-  ];
-
+  const DEFAULT_WHITELIST = ['U15/CS/1001', 'U15/CS/1002', 'U15/CS/1003', 'U15/CS/1004', 'NIN20268899', 'NIN20265544'];
   const DEFAULT_ELECTION = {
     name: 'SUG Presidential & General Election 2025/2026',
-    startTime: new Date(Date.now() - 3600000).toISOString().slice(0, 16), // Started 1 hour ago
-    endTime: new Date(Date.now() + 86400000).toISOString().slice(0, 16)   // Ends in 24 hours
+    startTime: new Date(Date.now() - 3600000).toISOString().slice(0, 16),
+    endTime: new Date(Date.now() + 86400000).toISOString().slice(0, 16)
   };
 
   const [appMode, setAppMode] = useState(() => localStorage.getItem('evote_mode') || 'gate');
   const [theme, setTheme] = useState(() => localStorage.getItem('evote_theme') || 'dark');
-  
-  const [positions, setPositions] = useState(() => {
-    const saved = localStorage.getItem('evote_positions');
-    return saved ? JSON.parse(saved) : DEFAULT_POSITIONS;
-  });
-
-  const [candidates, setCandidates] = useState(() => {
-    const saved = localStorage.getItem('evote_candidates');
-    return saved ? JSON.parse(saved) : DEFAULT_CANDIDATES;
-  });
-
-  const [whitelist, setWhitelist] = useState(() => {
-    const saved = localStorage.getItem('evote_whitelist');
-    return saved ? JSON.parse(saved) : DEFAULT_WHITELIST;
-  });
-
-  const [electionConfig, setElectionConfig] = useState(() => {
-    const saved = localStorage.getItem('evote_election_config');
-    return saved ? JSON.parse(saved) : DEFAULT_ELECTION;
-  });
-
-  const [voters, setVoters] = useState(() => {
-    const saved = localStorage.getItem('evote_voters');
-    return saved ? JSON.parse(saved) : [];
-  });
-
+  const [positions, setPositions] = useState(DEFAULT_POSITIONS);
+  const [candidates, setCandidates] = useState(DEFAULT_CANDIDATES);
+  const [whitelist, setWhitelist] = useState(DEFAULT_WHITELIST);
+  const [electionConfig, setElectionConfig] = useState(DEFAULT_ELECTION);
+  const [voters, setVoters] = useState([]);
   const [currentVoter, setCurrentVoter] = useState(() => {
     const saved = localStorage.getItem('evote_current_voter');
     return saved ? JSON.parse(saved) : null;
@@ -60,7 +51,6 @@ export default function App() {
 
   const [voterTab, setVoterTab] = useState(currentVoter ? 'dashboard' : 'login');
   const [adminTab, setAdminTab] = useState('audit');
-
   const [adminPass, setAdminPass] = useState('');
   const [regForm, setRegForm] = useState({ name: '', id: '', email: '', dob: '' });
   const [loginForm, setLoginForm] = useState({ id: '', password: '' });
@@ -77,9 +67,104 @@ export default function App() {
   const [ballotSelections, setBallotSelections] = useState({});
   const [searchStatusQuery, setSearchStatusQuery] = useState('');
   const [searchedVoter, setSearchedVoter] = useState(null);
-
-  // Dynamic system time checker to enable/disable voting in real time
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    if (Object.keys(firebaseConfig).length === 0) return;
+    try {
+      const app = initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+      const auth = getAuth(app);
+
+      const authenticate = async () => {
+        try {
+          let userCredential;
+          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            userCredential = await signInWithCustomToken(auth, __initial_auth_token);
+          } else {
+            userCredential = await signInAnonymously(auth);
+          }
+          setUser(userCredential.user);
+          setDbConnected(true);
+        } catch (err) {
+          console.error("Firebase auth flow failed:", err);
+        }
+      };
+
+      authenticate();
+    } catch (err) {
+      console.error("Firebase setup failed:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!dbConnected || Object.keys(firebaseConfig).length === 0) return;
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // Sync Election Parameters Configuration
+    const unsubscribeConfig = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'election'), (snapshot) => {
+      if (snapshot.exists()) {
+        setElectionConfig(snapshot.data());
+      } else {
+        // Seed default parameters if config collection is empty
+        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'election'), DEFAULT_ELECTION);
+      }
+    }, (error) => console.error("Election parameter stream error:", error));
+
+    // Sync Ballot Positions Parameters
+    const unsubscribePositions = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'positions'), (snapshot) => {
+      if (snapshot.exists()) {
+        setPositions(snapshot.data().list || []);
+      } else {
+        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'positions'), { list: DEFAULT_POSITIONS });
+      }
+    }, (error) => console.error("Ballot positions stream error:", error));
+
+    // Sync Registered Candidates List
+    const unsubscribeCandidates = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'candidates'), (snapshot) => {
+      if (snapshot.exists()) {
+        setCandidates(snapshot.data().list || []);
+      } else {
+        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'candidates'), { list: DEFAULT_CANDIDATES });
+      }
+    }, (error) => console.error("Candidates stream error:", error));
+
+    // Sync Voter Registration Whitelist Matrix
+    const unsubscribeWhitelist = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'whitelist'), (snapshot) => {
+      if (snapshot.exists()) {
+        setWhitelist(snapshot.data().list || []);
+      } else {
+        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'whitelist'), { list: DEFAULT_WHITELIST });
+      }
+    }, (error) => console.error("Whitelist stream error:", error));
+
+    // Sync Active Enrolled Voters List
+    const unsubscribeVoters = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'voters'), (snapshot) => {
+      if (snapshot.exists()) {
+        const remoteVoters = snapshot.data().list || [];
+        setVoters(remoteVoters);
+        // Sync voter session profile in real-time
+        if (currentVoter) {
+          const freshVoter = remoteVoters.find(v => v.id === currentVoter.id);
+          if (freshVoter) {
+            setCurrentVoter(freshVoter);
+            localStorage.setItem('evote_current_voter', JSON.stringify(freshVoter));
+          }
+        }
+      } else {
+        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'voters'), { list: [] });
+      }
+    }, (error) => console.error("Voters collection stream error:", error));
+
+    return () => {
+      unsubscribeConfig();
+      unsubscribePositions();
+      unsubscribeCandidates();
+      unsubscribeWhitelist();
+      unsubscribeVoters();
+    };
+  }, [dbConnected, currentVoter]);
 
   useEffect(() => {
     localStorage.setItem('evote_mode', appMode);
@@ -88,26 +173,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('evote_theme', theme);
   }, [theme]);
-
-  useEffect(() => {
-    localStorage.setItem('evote_positions', JSON.stringify(positions));
-  }, [positions]);
-
-  useEffect(() => {
-    localStorage.setItem('evote_candidates', JSON.stringify(candidates));
-  }, [candidates]);
-
-  useEffect(() => {
-    localStorage.setItem('evote_whitelist', JSON.stringify(whitelist));
-  }, [whitelist]);
-
-  useEffect(() => {
-    localStorage.setItem('evote_election_config', JSON.stringify(electionConfig));
-  }, [electionConfig]);
-
-  useEffect(() => {
-    localStorage.setItem('evote_voters', JSON.stringify(voters));
-  }, [voters]);
 
   useEffect(() => {
     localStorage.setItem('evote_admin_auth', isAdminAuthenticated ? 'true' : 'false');
@@ -121,50 +186,21 @@ export default function App() {
     }
   }, [currentVoter]);
 
-  // Real-time interval timer for voting windows
+  // Real-time ticking time updater
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    const handleCrossTabSync = (e) => {
-      if (e.key === 'evote_candidates' && e.newValue) {
-        setCandidates(JSON.parse(e.newValue));
-      }
-      if (e.key === 'evote_positions' && e.newValue) {
-        setPositions(JSON.parse(e.newValue));
-      }
-      if (e.key === 'evote_whitelist' && e.newValue) {
-        setWhitelist(JSON.parse(e.newValue));
-      }
-      if (e.key === 'evote_election_config' && e.newValue) {
-        setElectionConfig(JSON.parse(e.newValue));
-      }
-      if (e.key === 'evote_voters' && e.newValue) {
-        setVoters(JSON.parse(e.newValue));
-        if (currentVoter) {
-          const freshVoters = JSON.parse(e.newValue);
-          const updatedSelf = freshVoters.find(v => v.id === currentVoter.id);
-          if (updatedSelf) {
-            setCurrentVoter(updatedSelf);
-          }
-        }
-      }
-    };
-    window.addEventListener('storage', handleCrossTabSync);
-    return () => window.removeEventListener('storage', handleCrossTabSync);
-  }, [currentVoter]);
 
   const timeoutIdRef = useRef(null);
   const INACTIVITY_LIMIT = 5 * 60 * 1000; // 5 minutes
 
   const triggerAutoLock = () => {
     if (currentVoter) {
-      handleVoterLogout('Session automatically locked due to 5 minutes of system idle.');
+      handleVoterLogout('Session automatically locked due to 5 minutes of system inactivity.');
     } else if (isAdminAuthenticated) {
       handleAdminLogout();
-      triggerAlert('Admin session locked due to inactivity.', 'error');
+      triggerAlert('Admin command session locked due to inactivity.', 'error');
     }
   };
 
@@ -186,6 +222,46 @@ export default function App() {
     };
   }, [currentVoter, isAdminAuthenticated]);
 
+  const savePositionsToCloud = async (updatedList) => {
+    setPositions(updatedList);
+    if (!dbConnected) return;
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'positions'), { list: updatedList });
+  };
+
+  const saveCandidatesToCloud = async (updatedList) => {
+    setCandidates(updatedList);
+    if (!dbConnected) return;
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'candidates'), { list: updatedList });
+  };
+
+  const saveWhitelistToCloud = async (updatedList) => {
+    setWhitelist(updatedList);
+    if (!dbConnected) return;
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'whitelist'), { list: updatedList });
+  };
+
+  const saveElectionConfigToCloud = async (updatedConfig) => {
+    setElectionConfig(updatedConfig);
+    if (!dbConnected) return;
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'election'), updatedConfig);
+  };
+
+  const saveVotersToCloud = async (updatedList) => {
+    setVoters(updatedList);
+    if (!dbConnected) return;
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'voters'), { list: updatedList });
+  };
+
   const triggerAlert = (message, type = 'info') => {
     setAlert({ message, type });
     setTimeout(() => setAlert(null), 5000);
@@ -203,7 +279,7 @@ export default function App() {
     triggerAlert('Admin logged out successfully.', 'info');
   };
 
-  const handleVoterRegister = (e) => {
+  const handleVoterRegister = async (e) => {
     e.preventDefault();
     const cleanId = regForm.id.trim().toUpperCase();
     
@@ -211,7 +287,6 @@ export default function App() {
       return triggerAlert('Please provide all details.', 'error');
     }
 
-    // --- SECURITY RULE: CHECK ELIGIBILITY WHITELIST ---
     if (!whitelist.includes(cleanId)) {
       return triggerAlert('Registration Blocked: ID/NIN is not on the administrator eligibility whitelist.', 'error');
     }
@@ -220,7 +295,6 @@ export default function App() {
       return triggerAlert('Student ID/NIN has already been registered.', 'error');
     }
 
-    // Generate random secure temporary access key
     const passCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
     const newVoterObj = {
@@ -237,7 +311,7 @@ export default function App() {
     };
 
     const updated = [...voters, newVoterObj];
-    setVoters(updated);
+    await saveVotersToCloud(updated);
     setGeneratedPass(passCode);
     triggerAlert('Enrollment complete! Secure your auto-generated access key.', 'success');
   };
@@ -262,7 +336,7 @@ export default function App() {
     }
   };
 
-  const handleFirstLoginCustomization = (e) => {
+  const handleFirstLoginCustomization = async (e) => {
     e.preventDefault();
     if (!currentVoter) return;
 
@@ -282,7 +356,7 @@ export default function App() {
       }
       return v;
     });
-    setVoters(updatedVoters);
+    await saveVotersToCloud(updatedVoters);
 
     const updatedUser = { ...currentVoter, password: firstResetForm.newPassword, isFirstLogin: false };
     setCurrentVoter(updatedUser);
@@ -291,7 +365,7 @@ export default function App() {
     triggerAlert('Credential customization successful. Ballot board unlocked.', 'success');
   };
 
-  const handleDOBPasswordRecovery = (e) => {
+  const handleDOBPasswordRecovery = async (e) => {
     e.preventDefault();
     const targetId = resetForm.id.trim().toUpperCase();
     const matchIndex = voters.findIndex(v => v.id === targetId && v.dob === resetForm.dob);
@@ -299,7 +373,7 @@ export default function App() {
     if (matchIndex !== -1) {
       const updatedVoters = [...voters];
       updatedVoters[matchIndex].password = resetForm.newPassword;
-      setVoters(updatedVoters);
+      await saveVotersToCloud(updatedVoters);
       triggerAlert('Password recovered successfully! Login now.', 'success');
       setVoterTab('login');
       setResetForm({ id: '', dob: '', newPassword: '' });
@@ -315,10 +389,9 @@ export default function App() {
     }));
   };
 
-  const processCastBallot = () => {
+  const processCastBallot = async () => {
     if (!currentVoter) return;
 
-    // Timeframe Validation Check
     const start = new Date(electionConfig.startTime);
     const end = new Date(electionConfig.endTime);
     if (currentTime < start || currentTime > end) {
@@ -328,25 +401,24 @@ export default function App() {
     }
 
     if (currentVoter.hasVoted) {
-      triggerAlert('Double voting attempt rejected by local ledger integrity rules.', 'error');
+      triggerAlert('Double voting attempt rejected by cloud ledger rules.', 'error');
       setConfirmVoteModal(false);
       return;
     }
 
-    // Generate cryptographic proof receipt
     const receiptCode = 'SEC-REC-' + Math.random().toString(36).substring(2, 10).toUpperCase() + '-' + Math.floor(Math.random() * 9000 + 1000);
     const voteTime = new Date().toLocaleString();
 
-    // Dynamically increment candidate votes
-    setCandidates(prev => prev.map(cand => {
+    // Increment Candidates Tally in database
+    const updatedCandidates = candidates.map(cand => {
       const selectedForPost = ballotSelections[cand.post];
       if (selectedForPost && selectedForPost.id === cand.id) {
         return { ...cand, votes: cand.votes + 1 };
       }
       return cand;
-    }));
+    });
+    await saveCandidatesToCloud(updatedCandidates);
 
-    // Create string of choices for history verification log
     const selectionsSummary = positions.map(pos => `${pos}: ${ballotSelections[pos]?.name || 'Abstained'}`).join(' | ');
 
     const updatedVoters = voters.map(v => {
@@ -361,7 +433,7 @@ export default function App() {
       }
       return v;
     });
-    setVoters(updatedVoters);
+    await saveVotersToCloud(updatedVoters);
 
     const sessionUser = {
       ...currentVoter,
@@ -398,7 +470,7 @@ export default function App() {
     }
   };
 
-  const handleUpdateElectionConfig = (e) => {
+  const handleUpdateElectionConfig = async (e) => {
     e.preventDefault();
     if (!electionConfig.name || !electionConfig.startTime || !electionConfig.endTime) {
       return triggerAlert('Fill in all election settings parameters.', 'error');
@@ -411,11 +483,11 @@ export default function App() {
       return triggerAlert('Configuration Error: End time must fall after start time.', 'error');
     }
 
-    setElectionConfig({ ...electionConfig });
+    await saveElectionConfigToCloud({ ...electionConfig });
     triggerAlert('Active election variables successfully broadcasted to nodes.', 'success');
   };
 
-  const handleCreatePosition = (e) => {
+  const handleCreatePosition = async (e) => {
     e.preventDefault();
     const name = newPosition.trim();
     if (!name) return;
@@ -424,18 +496,20 @@ export default function App() {
     }
 
     const updatedPosts = [...positions, name];
-    setPositions(updatedPosts);
+    await savePositionsToCloud(updatedPosts);
     setNewPosition('');
     triggerAlert(`Created new election position: ${name}`, 'success');
   };
 
-  const handleDeletePosition = (postName) => {
-    setPositions(positions.filter(p => p !== postName));
-    setCandidates(candidates.filter(c => c.post !== postName));
+  const handleDeletePosition = async (postName) => {
+    const updatedPositions = positions.filter(p => p !== postName);
+    const updatedCandidates = candidates.filter(c => c.post !== postName);
+    await savePositionsToCloud(updatedPositions);
+    await saveCandidatesToCloud(updatedCandidates);
     triggerAlert('Position and its corresponding candidates removed.', 'info');
   };
 
-  const handleCreateCandidate = (e) => {
+  const handleCreateCandidate = async (e) => {
     e.preventDefault();
     if (!newCand.name || !newCand.association) {
       return triggerAlert('Please provide Name and Association.', 'error');
@@ -450,17 +524,19 @@ export default function App() {
       color: newCand.color
     };
 
-    setCandidates([...candidates, brandNewCandidate]);
+    const updatedCands = [...candidates, brandNewCandidate];
+    await saveCandidatesToCloud(updatedCands);
     setNewCand({ name: '', post: positions[0] || '', association: '', color: 'bg-blue-600' });
     triggerAlert('Candidate registered onto ledger successfully!', 'success');
   };
 
-  const handleDeleteCandidate = (candId) => {
-    setCandidates(candidates.filter(c => c.id !== candId));
+  const handleDeleteCandidate = async (candId) => {
+    const updated = candidates.filter(c => c.id !== candId);
+    await saveCandidatesToCloud(updated);
     triggerAlert('Candidate removed successfully.', 'info');
   };
 
-  const handleAddWhitelistId = (e) => {
+  const handleAddWhitelistId = async (e) => {
     e.preventDefault();
     const cleanId = newWhitelistId.trim().toUpperCase();
     if (!cleanId) return;
@@ -470,39 +546,33 @@ export default function App() {
     }
 
     const updatedWhitelist = [...whitelist, cleanId];
-    setWhitelist(updatedWhitelist);
+    await saveWhitelistToCloud(updatedWhitelist);
     setNewWhitelistId('');
     triggerAlert(`Successfully whitelisted eligibility key: ${cleanId}`, 'success');
   };
 
-  const handleDeleteWhitelistId = (idToDelete) => {
-    setWhitelist(whitelist.filter(id => id !== idToDelete));
+  const handleDeleteWhitelistId = async (idToDelete) => {
+    const updated = whitelist.filter(id => id !== idToDelete);
+    await saveWhitelistToCloud(updated);
     triggerAlert('ID removed from eligibility whitelist matrix.', 'info');
   };
 
-  const handleSeedMockData = () => {
+  const handleSeedMockData = async () => {
     const mockVoters = [
       { id: 'U15/CS/1001', name: 'Kabiru Adamu', email: 'k.adamu@uni.edu.ng', dob: '2001-05-12', password: 'DEMO1', hasVoted: true, votedFor: 'President: Comrade Yusuf Bello | Secretary General: Sarah Udoh | Treasurer: Abstained', receiptHash: 'SEC-REC-MOCK-1', timestamp: '5/18/2026, 11:30 AM', isFirstLogin: false },
       { id: 'U15/CS/1002', name: 'Blessing Paul', email: 'b.paul@uni.edu.ng', dob: '2002-11-20', password: 'DEMO2', hasVoted: true, votedFor: 'President: Chinwe Okeke | Secretary General: Ibrahim Musa | Treasurer: Abstained', receiptHash: 'SEC-REC-MOCK-2', timestamp: '5/18/2026, 12:15 PM', isFirstLogin: false },
       { id: 'U15/CS/1003', name: 'Mustapha Haruna', email: 'm.haruna@uni.edu.ng', dob: '2000-01-15', password: 'DEMO3', hasVoted: false, votedFor: null, receiptHash: '', timestamp: '', isFirstLogin: false }
     ];
-    setVoters(mockVoters);
+    await saveVotersToCloud(mockVoters);
     triggerAlert('Demo metrics successfully loaded.', 'success');
   };
 
-  const handleResetApplicationState = () => {
-    localStorage.removeItem('evote_voters');
-    localStorage.removeItem('evote_candidates');
-    localStorage.removeItem('evote_positions');
-    localStorage.removeItem('evote_whitelist');
-    localStorage.removeItem('evote_election_config');
-    localStorage.removeItem('evote_current_voter');
-    
-    setVoters([]);
-    setPositions(DEFAULT_POSITIONS);
-    setCandidates(DEFAULT_CANDIDATES);
-    setWhitelist(DEFAULT_WHITELIST);
-    setElectionConfig(DEFAULT_ELECTION);
+  const handleResetApplicationState = async () => {
+    await saveVotersToCloud([]);
+    await savePositionsToCloud(DEFAULT_POSITIONS);
+    await saveCandidatesToCloud(DEFAULT_CANDIDATES);
+    await saveWhitelistToCloud(DEFAULT_WHITELIST);
+    await saveElectionConfigToCloud(DEFAULT_ELECTION);
     setCurrentVoter(null);
     setVoterTab('login');
     triggerAlert('System data reset successfully.', 'info');
@@ -510,8 +580,6 @@ export default function App() {
 
   const handleDownloadPDF = () => {
     if (!currentVoter || !currentVoter.hasVoted) return;
-
-    // Direct client load of standard modular jsPDF assets
     const scriptUrl = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
 
     const generateReceiptDoc = () => {
@@ -519,7 +587,6 @@ export default function App() {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a6' });
 
-        // Outer layout branding
         doc.setFillColor(15, 23, 42);
         doc.rect(0, 0, 105, 15, 'F');
         
@@ -528,7 +595,6 @@ export default function App() {
         doc.setTextColor(255, 255, 255);
         doc.text('SECURE VOTE NODE - AUDIT SLIP', 8, 10);
 
-        // Core transaction variables
         doc.setFontSize(8);
         doc.setTextColor(50, 50, 50);
         doc.setFont('Helvetica', 'normal');
@@ -584,7 +650,6 @@ export default function App() {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-        // Header Style
         doc.setFillColor(30, 41, 59);
         doc.rect(0, 0, 210, 25, 'F');
         
@@ -598,12 +663,10 @@ export default function App() {
         doc.setFont('Helvetica', 'normal');
         doc.text(`Election: ${electionConfig.name}  |  Generated on: ${new Date().toLocaleString()}`, 12, 21);
 
-        // Grid Content
         doc.setFontSize(10);
         doc.setTextColor(50, 50, 50);
         doc.setFont('Helvetica', 'bold');
         
-        // Table Headers
         doc.text('S/N', 12, 38);
         doc.text('Student Name', 25, 38);
         doc.text('ID / Matric No', 75, 38);
@@ -694,7 +757,10 @@ export default function App() {
             </div>
             <div>
               <span className="text-xl font-extrabold tracking-wider bg-gradient-to-r from-teal-400 to-blue-400 bg-clip-text text-transparent">SECURE-VOTE</span>
-              <p className={`text-[10px] ${s.textMuted} uppercase tracking-widest font-mono`}>Dual-Node Network Node</p>
+              <p className={`text-[10px] ${s.textMuted} uppercase tracking-widest font-mono flex items-center gap-1.5`}>
+                Dual-Node System
+                <span className={`inline-block w-2 h-2 rounded-full ${dbConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} title={dbConnected ? "Real-time Cloud Node Active" : "Local Mirror State Active"}></span>
+              </p>
             </div>
           </div>
 
@@ -754,12 +820,12 @@ export default function App() {
         {appMode === 'gate' && (
           <div className="max-w-3xl mx-auto text-center space-y-8 py-12">
             <div className="space-y-3">
-              <span className="text-xs font-mono uppercase bg-teal-500/10 text-teal-400 px-3 py-1 rounded-full border border-teal-500/30">
-                Network Topology Selector
+              <span className="text-xs font-mono uppercase bg-teal-500/10 text-teal-400 px-3 py-1 rounded-full border border-teal-500/30 animate-pulse">
+                Real-Time Cloud Synchronization Active
               </span>
               <h1 className={`text-4xl font-black ${s.textMain}`}>Select Ecosystem Interface Node</h1>
               <p className={`text-sm max-w-lg mx-auto ${s.textMuted}`}>
-                This system runs a synchronized dual-app framework. Opening voter and administrator nodes on matching clients triggers real-time data propagation automatically.
+                This system operates as a unified cloud-native environment. Open one screen as Voter and another device/browser as Admin to witness instant data propagation.
               </p>
             </div>
 
@@ -777,7 +843,7 @@ export default function App() {
                 <div className="mt-8 space-y-2">
                   <h3 className="text-lg font-black group-hover:text-teal-400 transition">Voter Node Client</h3>
                   <p className={`text-xs leading-relaxed ${s.textMuted}`}>
-                    Voter onboarding registration, temporary key validation, credential customization, and secure end-to-end ballot casting workflows.
+                    Voter registration, eligibility checking, profile verification, and secure multi-position casting workflows.
                   </p>
                 </div>
               </button>
@@ -795,7 +861,7 @@ export default function App() {
                 <div className="mt-8 space-y-2">
                   <h3 className="text-lg font-black group-hover:text-blue-400 transition">Admin Node Portal</h3>
                   <p className={`text-xs leading-relaxed ${s.textMuted}`}>
-                    Election customization management, position creation, candidate additions, real-time audit ledger tracking, and database seed resets.
+                    Global election configuration, candidate directory creation, voter ID whitelisting, and live tally audits.
                   </p>
                 </div>
               </button>
@@ -805,327 +871,338 @@ export default function App() {
 
         {/* --- PORTAL A: VOTERS PORTAL --- */}
         {appMode === 'voter' && (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-fadeIn">
             
             {/* View Tab A1: Voter Login */}
             {voterTab === 'login' && (
-              <div className={`max-w-md mx-auto p-6 rounded-2xl border relative ${s.bgCard}`}>
-                <div className="text-center mb-6">
-                  <span className="text-[10px] uppercase tracking-widest font-mono bg-teal-500/10 text-teal-400 border border-teal-500/30 px-3 py-1 rounded-full">
-                    VOTER INTERFACE
-                  </span>
-                  <h2 className="text-2xl font-black mt-3">Voter Credentials Verification</h2>
-                  <p className={`text-xs mt-1 ${s.textMuted}`}>Access your ballot card and system credentials securely.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                
+                {/* Login Form Box */}
+                <div className={`p-8 rounded-2xl border ${s.bgCard} space-y-6`}>
+                  <div className="space-y-1">
+                    <span className="text-[10px] tracking-widest uppercase font-mono bg-teal-500/10 text-teal-400 border border-teal-500/30 px-2.5 py-1 rounded-full">
+                      Voter Node Authentication
+                    </span>
+                    <h2 className="text-2xl font-black pt-1.5">Enter Voting Key</h2>
+                    <p className={`text-xs ${s.textMuted}`}>Provide your registered Voter Identity ID/NIN and secure password key.</p>
+                  </div>
+
+                  <form onSubmit={handleVoterLogin} className="space-y-4">
+                    <div>
+                      <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Student ID / Matric / NIN</label>
+                      <input 
+                        type="text" 
+                        value={loginForm.id} 
+                        onChange={e => setLoginForm({ ...loginForm, id: e.target.value })} 
+                        className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
+                        placeholder="e.g. U15/CS/1001" 
+                        required 
+                      />
+                    </div>
+
+                    <div>
+                      <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Security Password Key</label>
+                      <input 
+                        type="password" 
+                        value={loginForm.password} 
+                        onChange={e => setLoginForm({ ...loginForm, password: e.target.value })} 
+                        className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
+                        placeholder="••••••" 
+                        required 
+                      />
+                    </div>
+
+                    <button 
+                      type="submit" 
+                      className="w-full bg-teal-500 hover:bg-teal-400 text-slate-950 p-3.5 rounded-xl font-bold transition text-xs uppercase tracking-wider"
+                    >
+                      Authenticate Credentials
+                    </button>
+                  </form>
+
+                  <div className="flex justify-between items-center text-xs pt-2 border-t dark:border-slate-800">
+                    <button onClick={() => setVoterTab('register')} className="text-teal-400 hover:underline">
+                      ➕ Create Account Node
+                    </button>
+                    <button onClick={() => setVoterTab('forgot')} className="text-teal-400 hover:underline">
+                      🔑 Forgot Passkey?
+                    </button>
+                  </div>
                 </div>
 
-                <form onSubmit={handleVoterLogin} className="space-y-4">
+                {/* Instant Checker / Registration rules */}
+                <div className="space-y-6">
+                  
+                  {/* Status Checking Widget */}
+                  <div className={`p-6 rounded-2xl border ${s.bgCard} space-y-4`}>
+                    <div>
+                      <h3 className="text-md font-bold">Check Enrollment & Status</h3>
+                      <p className={`text-xs mt-0.5 ${s.textMuted}`}>Enter your ID/NIN to verify registration and ballot history.</p>
+                    </div>
+
+                    <form onSubmit={handleInspectVoterStatus} className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={searchStatusQuery}
+                        onChange={e => setSearchStatusQuery(e.target.value)}
+                        placeholder="e.g. U15/CS/1001"
+                        className={`px-3 py-2 text-xs rounded-xl flex-grow outline-none border ${s.bgInput}`}
+                        required
+                      />
+                      <button 
+                        type="submit" 
+                        className="bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs px-4 rounded-xl font-bold transition"
+                      >
+                        Inspect
+                      </button>
+                    </form>
+
+                    {searchedVoter && (
+                      <div className={`p-4 rounded-xl border text-xs space-y-2 font-mono ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                        {searchedVoter.notFound ? (
+                          <p className="text-red-400">⚠️ Profile '{searchedVoter.query}' is not currently registered.</p>
+                        ) : (
+                          <div className="space-y-1">
+                            <p className="font-sans font-bold text-sm text-teal-400">{searchedVoter.name}</p>
+                            <p>ID: {searchedVoter.id}</p>
+                            <div className="pt-2 border-t dark:border-slate-800 flex items-center justify-between">
+                              <span>Status:</span>
+                              <span className={`px-2 py-0.5 rounded font-sans text-[10px] font-black ${searchedVoter.hasVoted ? 'bg-emerald-950 text-emerald-300' : 'bg-amber-950 text-amber-300'}`}>
+                                {searchedVoter.hasVoted ? 'CASTED' : 'PENDING'}
+                              </span>
+                            </div>
+                            {searchedVoter.hasVoted && (
+                              <div className="pt-2 space-y-1 text-[11px]">
+                                <p className="text-emerald-400">Timestamp: {searchedVoter.timestamp}</p>
+                                <p className="text-[10px] opacity-75 truncate" title={searchedVoter.receiptHash}>Signature: {searchedVoter.receiptHash}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Info Notice Box */}
+                  <div className={`p-6 rounded-2xl border leading-relaxed text-xs space-y-2 ${s.bgBanner}`}>
+                    <h4 className="font-bold text-sm uppercase tracking-wider text-teal-400">Voter Enrollment Protocol</h4>
+                    <p>To successfully enroll your voting node onto this decentralized layout, your unique identification marker (Student ID or National Identity Number) must first be Whitelisted by the administrator authority panel.</p>
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+            {/* View Tab A2: Voter Register */}
+            {voterTab === 'register' && (
+              <div className={`max-w-md mx-auto p-8 rounded-2xl border ${s.bgCard} space-y-6`}>
+                <div className="space-y-1">
+                  <span className="text-[10px] tracking-widest uppercase font-mono bg-teal-500/10 text-teal-400 border border-teal-500/30 px-2.5 py-1 rounded-full">
+                    Account Enrollment Node
+                  </span>
+                  <h2 className="text-2xl font-black pt-1.5">Create Secure Account</h2>
+                  <p className={`text-xs ${s.textMuted}`}>All registration entries are validated against the eligibility whitelists.</p>
+                </div>
+
+                <form onSubmit={handleVoterRegister} className="space-y-4">
                   <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student ID / Matric No / NIN</label>
+                    <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Full Student Name</label>
                     <input 
                       type="text" 
-                      value={loginForm.id} 
-                      onChange={e => setLoginForm({ ...loginForm, id: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none transition text-sm font-mono placeholder-slate-400 border ${s.bgInput}`}
-                      placeholder="E.G. U15/CS/1001" 
+                      value={regForm.name} 
+                      onChange={e => setRegForm({ ...regForm, name: e.target.value })} 
+                      className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
+                      placeholder="e.g. Ibrahim Yusuf" 
                       required 
                     />
                   </div>
 
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Student ID / Matric / NIN</label>
+                      <input 
+                        type="text" 
+                        value={regForm.id} 
+                        onChange={e => setRegForm({ ...regForm, id: e.target.value })} 
+                        className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
+                        placeholder="e.g. U15/CS/1001" 
+                        required 
+                      />
+                    </div>
+
+                    <div>
+                      <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Date of Birth</label>
+                      <input 
+                        type="date" 
+                        value={regForm.dob} 
+                        onChange={e => setRegForm({ ...regForm, dob: e.target.value })} 
+                        className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
+                        required 
+                      />
+                    </div>
+                  </div>
+
                   <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Access Key Password</label>
+                    <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Official University Email</label>
                     <input 
-                      type="password" 
-                      value={loginForm.password} 
-                      onChange={e => setLoginForm({ ...loginForm, password: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none transition text-sm placeholder-slate-400 border ${s.bgInput}`}
-                      placeholder="••••••••" 
+                      type="email" 
+                      value={regForm.email} 
+                      onChange={e => setRegForm({ ...regForm, email: e.target.value })} 
+                      className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
+                      placeholder="e.g. student@university.edu" 
                       required 
                     />
                   </div>
 
                   <button 
                     type="submit" 
-                    className="w-full bg-teal-500 hover:bg-teal-400 text-slate-950 p-3.5 rounded-xl font-bold transition text-sm shadow-lg shadow-teal-500/20"
+                    className="w-full bg-teal-500 hover:bg-teal-400 text-slate-950 p-3.5 rounded-xl font-bold transition text-xs uppercase tracking-wider"
                   >
-                    Authenticate Private Key
+                    Generate Dynamic Access Key
                   </button>
-
-                  <div className={`flex justify-between text-xs text-teal-400 font-medium pt-3 border-t ${s.borderSub}`}>
-                    <button type="button" onClick={() => setVoterTab('register')} className="hover:text-teal-500 hover:underline transition">Register Account</button>
-                    <button type="button" onClick={() => setVoterTab('forgot')} className="hover:text-teal-500 hover:underline transition">Reset Password</button>
-                  </div>
                 </form>
 
-                {/* Instant Check Vote Status Block */}
-                <div className={`mt-8 pt-6 border-t ${s.borderSub}`}>
-                  <h4 className={`text-xs font-bold uppercase tracking-widest mb-2.5 ${s.textMuted}`}>Instant Check-Vote Status</h4>
-                  <form onSubmit={handleInspectVoterStatus} className="flex gap-2">
-                    <input 
-                      type="text" 
-                      value={searchStatusQuery}
-                      onChange={e => setSearchStatusQuery(e.target.value)}
-                      placeholder="Enter Matric/ID..."
-                      className={`px-3 py-2 text-xs rounded-lg flex-grow outline-none font-mono border ${s.bgInput}`}
-                    />
-                    <button type="submit" className={`text-xs px-4 py-2 rounded-lg font-semibold transition border ${s.bgButtonSec}`}>
-                      Inspect
-                    </button>
-                  </form>
-
-                  {searchedVoter && (
-                    <div className={`mt-4 p-3 rounded-lg border text-xs ${s.bgCard}`}>
-                      {searchedVoter.notFound ? (
-                        <p className="text-red-500 font-medium">❌ ID/NIN not registered on ledger database.</p>
-                      ) : (
-                        <div className="space-y-1.5">
-                          <p className="text-teal-400 font-bold">Voter: {searchedVoter.name}</p>
-                          <div className="flex items-center gap-2">
-                            <span className={s.textMuted}>Ballot State:</span>
-                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${searchedVoter.hasVoted ? 'bg-emerald-950/60 text-emerald-300' : 'bg-amber-950/60 text-amber-300'}`}>
-                              {searchedVoter.hasVoted ? 'CASTED' : 'PENDING'}
-                            </span>
-                          </div>
-                          {searchedVoter.hasVoted && (
-                            <>
-                              <p className={s.textMain}>Timestamp: <span className="font-mono text-teal-400 font-semibold">{searchedVoter.timestamp}</span></p>
-                              <p className={`text-[10px] break-all font-mono ${s.textMuted}`}>Signature: {searchedVoter.receiptHash}</p>
-                            </>
-                          )}
-                        </div>
-                      )}
+                {generatedPass && (
+                  <div className="p-4 rounded-xl border border-teal-500/50 bg-teal-950/20 space-y-2 text-xs">
+                    <p className="text-teal-400 font-bold">🔑 System Generated Temporary Passkey:</p>
+                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+                      <span className="font-mono text-base font-bold select-all tracking-wider">{generatedPass}</span>
+                      <span className="text-[10px] text-teal-400 uppercase tracking-widest animate-pulse font-bold">Copy Passkey</span>
                     </div>
-                  )}
+                    <p className="text-[10px] leading-normal opacity-85 text-slate-400">Write down this unique credentials string. This code key will be verified on your first-time login authorization step.</p>
+                  </div>
+                )}
+
+                <div className="pt-2 text-center border-t dark:border-slate-800">
+                  <button onClick={() => { setVoterTab('login'); setGeneratedPass(''); }} className="text-xs text-teal-400 hover:underline">
+                    ⬅️ Back to Authentication
+                  </button>
                 </div>
               </div>
             )}
 
-            {/* View Tab A2: Voter Register */}
-            {voterTab === 'register' && (
-              <div className={`max-w-md mx-auto p-6 rounded-2xl border shadow-2xl ${s.bgCard}`}>
-                <div className="text-center mb-6">
-                  <h2 className="text-2xl font-black text-teal-400">Voter Onboarding Card</h2>
-                  <p className={`text-xs mt-1 ${s.textMuted}`}>Register on the database nodes to generate your validation credentials.</p>
+            {/* View Tab A3: Forgot Password Recovery */}
+            {voterTab === 'forgot' && (
+              <div className={`max-w-md mx-auto p-8 rounded-2xl border ${s.bgCard} space-y-6`}>
+                <div className="space-y-1">
+                  <span className="text-[10px] tracking-widest uppercase font-mono bg-teal-500/10 text-teal-400 border border-teal-500/30 px-2.5 py-1 rounded-full">
+                    Credential Management
+                  </span>
+                  <h2 className="text-2xl font-black pt-1.5">Recover Password</h2>
+                  <p className={`text-xs ${s.textMuted}`}>Provide your exact identification and Date of Birth credentials to customize password keys.</p>
                 </div>
 
-                <form onSubmit={handleVoterRegister} className="space-y-4">
-                  <div className="bg-blue-950/20 border border-blue-500/20 p-3 rounded-xl text-[11px] leading-normal text-blue-300">
-                    💡 <strong>Note:</strong> Your ID / NIN must be whitelisted in the Admin Panel to register.
-                  </div>
-
+                <form onSubmit={handleDOBPasswordRecovery} className="space-y-4">
                   <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student Name</label>
+                    <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Student ID / Matric / NIN</label>
                     <input 
                       type="text" 
-                      value={regForm.name} 
-                      onChange={e => setRegForm({ ...regForm, name: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
-                      placeholder="e.g. Ibrahim Abubakar" 
-                      required 
-                    />
-                  </div>
-
-                  <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student ID / Matric No / NIN</label>
-                    <input 
-                      type="text" 
-                      value={regForm.id} 
-                      onChange={e => setRegForm({ ...regForm, id: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm font-mono border ${s.bgInput}`}
+                      value={resetForm.id} 
+                      onChange={e => setResetForm({ ...resetForm, id: e.target.value })} 
+                      className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
                       placeholder="e.g. U15/CS/1001" 
                       required 
                     />
                   </div>
 
                   <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>School Email Address</label>
-                    <input 
-                      type="email" 
-                      value={regForm.email} 
-                      onChange={e => setRegForm({ ...regForm, email: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
-                      placeholder="e.g. student@university.edu.ng" 
-                      required 
-                    />
-                  </div>
-
-                  <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Date of Birth (Identity Verification)</label>
-                    <input 
-                      type="date" 
-                      value={regForm.dob} 
-                      onChange={e => setRegForm({ ...regForm, dob: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
-                      required 
-                    />
-                  </div>
-
-                  <button 
-                    type="submit" 
-                    className="w-full bg-gradient-to-r from-teal-500 to-blue-600 hover:from-teal-400 hover:to-blue-500 text-slate-950 p-3.5 rounded-xl font-bold transition text-sm shadow"
-                  >
-                    Enroll Credentials
-                  </button>
-
-                  {generatedPass && (
-                    <div className="bg-teal-950/40 border border-teal-500/40 p-4 rounded-xl space-y-2 mt-4">
-                      <p className="text-xs font-bold text-teal-400 uppercase tracking-widest">⚠️ CREDENTIALS REGISTERED</p>
-                      <p className="text-xs text-slate-300">Copy this auto-generated temporary key securely. You must replace it upon first-time node access authentication.</p>
-                      <div className={`flex items-center justify-between p-3 rounded-lg border ${s.bgCard}`}>
-                        <span className="font-mono text-lg font-black text-emerald-400 tracking-widest">{generatedPass}</span>
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(generatedPass);
-                            triggerAlert('Key copied successfully!', 'success');
-                          }}
-                          className="text-[10px] bg-slate-850 hover:bg-slate-700 text-slate-300 py-1.5 px-3 rounded font-mono border border-slate-700"
-                        >
-                          Copy Key
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  <button 
-                    type="button" 
-                    onClick={() => { setVoterTab('login'); setGeneratedPass(''); }} 
-                    className={`w-full text-center text-xs hover:text-teal-500 hover:underline block pt-2 ${s.textMuted}`}
-                  >
-                    Already Registered? Go to Login
-                  </button>
-                </form>
-              </div>
-            )}
-
-            {/* View Tab A3: Forgot Password DOB Bypass */}
-            {voterTab === 'forgot' && (
-              <div className={`max-w-md mx-auto p-6 rounded-2xl border ${s.bgCard}`}>
-                <div className="text-center mb-6">
-                  <h2 className="text-2xl font-black text-teal-400">Identity Recovery Console</h2>
-                  <p className={`text-xs mt-1 ${s.textMuted}`}>Confirm DOB verification matrix to input your desired password override.</p>
-                </div>
-
-                <form onSubmit={handleDOBPasswordRecovery} className="space-y-4">
-                  <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Student ID / Matric / NIN</label>
-                    <input 
-                      type="text" 
-                      value={resetForm.id} 
-                      onChange={e => setResetForm({ ...resetForm, id: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm font-mono border ${s.bgInput}`}
-                      placeholder="E.G. U15/CS/1001" 
-                      required 
-                    />
-                  </div>
-
-                  <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Registered Date of Birth</label>
+                    <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Date of Birth Profile</label>
                     <input 
                       type="date" 
                       value={resetForm.dob} 
                       onChange={e => setResetForm({ ...resetForm, dob: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
+                      className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
                       required 
                     />
                   </div>
 
                   <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Input New Desired Password</label>
+                    <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>New Desired Secure Password</label>
                     <input 
                       type="password" 
                       value={resetForm.newPassword} 
                       onChange={e => setResetForm({ ...resetForm, newPassword: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
-                      placeholder="Minimum 4 characters" 
+                      className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
+                      placeholder="Create custom password" 
                       required 
                     />
                   </div>
 
                   <button 
                     type="submit" 
-                    className="w-full bg-blue-600 hover:bg-blue-500 text-white p-3.5 rounded-xl font-bold transition text-sm"
+                    className="w-full bg-teal-500 hover:bg-teal-400 text-slate-950 p-3.5 rounded-xl font-bold transition text-xs uppercase tracking-wider"
                   >
-                    Save & Authenticate Override
-                  </button>
-
-                  <button 
-                    type="button" 
-                    onClick={() => setVoterTab('login')} 
-                    className={`w-full text-center text-xs text-slate-400 hover:text-teal-500 hover:underline block pt-2`}
-                  >
-                    Cancel
+                    Reset Password
                   </button>
                 </form>
+
+                <div className="pt-2 text-center border-t dark:border-slate-800">
+                  <button onClick={() => setVoterTab('login')} className="text-xs text-teal-400 hover:underline">
+                    ⬅️ Cancel and Back
+                  </button>
+                </div>
               </div>
             )}
 
-            {/* View Tab A4: First Login Credential Modification */}
+            {/* View Tab A4: First-Time Login Password Customization */}
             {voterTab === 'first-login-reset' && currentVoter && (
-              <div className={`max-w-md mx-auto p-6 rounded-2xl border ${s.bgCard}`}>
-                <div className="text-center mb-6">
-                  <span className="bg-teal-500/10 text-teal-400 text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full font-bold border border-teal-500/30">
-                    MANDATORY SECURITY COMPLIANCE
+              <div className={`max-w-md mx-auto p-8 rounded-2xl border ${s.bgCard} space-y-6`}>
+                <div className="space-y-1">
+                  <span className="text-[10px] tracking-widest uppercase font-mono bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full">
+                    First-Time Login Authorization
                   </span>
-                  <h2 className="text-2xl font-black mt-3">Configure Custom Credentials</h2>
-                  <p className={`text-xs mt-1 ${s.textMuted}`}>Confirm temporary credentials to apply your custom chosen password block.</p>
+                  <h2 className="text-2xl font-black pt-1.5">Customize Passkey</h2>
+                  <p className={`text-xs ${s.textMuted}`}>Confirm your temporary auto-generated key to establish your private, custom credentials.</p>
                 </div>
 
                 <form onSubmit={handleFirstLoginCustomization} className="space-y-4">
                   <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Confirm Generated Key</label>
+                    <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Confirm Temporary Key</label>
                     <input 
                       type="password" 
                       value={firstResetForm.currentPassword} 
                       onChange={e => setFirstResetForm({ ...firstResetForm, currentPassword: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm font-mono border ${s.bgInput}`}
-                      placeholder="Paste your copied generated password" 
+                      className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
+                      placeholder="Input the generated code key" 
                       required 
                     />
                   </div>
 
                   <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Input Custom Desired Password</label>
+                    <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>New Desired Password</label>
                     <input 
                       type="password" 
                       value={firstResetForm.newPassword} 
                       onChange={e => setFirstResetForm({ ...firstResetForm, newPassword: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
-                      placeholder="Create security password code" 
+                      className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
+                      placeholder="Min 4 characters" 
                       required 
                     />
                   </div>
 
                   <div>
-                    <label className={`block text-xs uppercase tracking-wider font-semibold mb-1.5 ${s.textMuted}`}>Confirm Custom Password</label>
+                    <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Confirm New Password</label>
                     <input 
                       type="password" 
                       value={firstResetForm.confirmPassword} 
                       onChange={e => setFirstResetForm({ ...firstResetForm, confirmPassword: e.target.value })} 
-                      className={`w-full p-3 rounded-xl outline-none text-sm border ${s.bgInput}`}
-                      placeholder="Re-type code" 
+                      className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
+                      placeholder="Re-enter desired password" 
                       required 
                     />
                   </div>
 
                   <button 
                     type="submit" 
-                    className="w-full bg-teal-500 hover:bg-teal-400 text-slate-950 p-3.5 rounded-xl font-bold transition text-sm shadow-lg shadow-teal-500/15"
+                    className="w-full bg-teal-500 hover:bg-teal-400 text-slate-950 p-3.5 rounded-xl font-bold transition text-xs uppercase tracking-wider"
                   >
-                    Commit Security Credentials
-                  </button>
-
-                  <button 
-                    type="button" 
-                    onClick={() => handleVoterLogout('Setup cancelled. Authentication required.')} 
-                    className={`w-full text-center text-xs hover:text-teal-500 hover:underline block pt-2 ${s.textMuted}`}
-                  >
-                    Sign Out & Postpone
+                    Establish Secure Credentials
                   </button>
                 </form>
               </div>
             )}
 
-            {/* View Tab A5: Voter Main Command Dashboard */}
+            {/* View Tab A5: Voter Main Dashboard */}
             {voterTab === 'dashboard' && currentVoter && (
               <div className="space-y-6">
                 
@@ -1341,7 +1418,6 @@ export default function App() {
                       placeholder="••••••••" 
                       required 
                     />
-                    <p className={`text-[10px] mt-1 text-center ${s.textMuted}`}> Use Admin default code</p>
                   </div>
 
                   <button 
@@ -1409,7 +1485,7 @@ export default function App() {
 
                 {/* Sub-View B2: Live Tallies Audit */}
                 {adminTab === 'audit' && (
-                  <div className="space-y-6">
+                  <div className="space-y-6 animate-fadeIn">
                     
                     {/* Live Statistics Cards */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
@@ -1505,7 +1581,7 @@ export default function App() {
 
                 {/* Sub-View B3: Election Creation Settings */}
                 {adminTab === 'election' && (
-                  <div className={`p-6 rounded-2xl border ${s.bgCard} max-w-xl mx-auto space-y-6`}>
+                  <div className={`p-6 rounded-2xl border ${s.bgCard} max-w-xl mx-auto space-y-6 animate-fadeIn`}>
                     <div>
                       <h3 className="text-md font-bold text-blue-400 uppercase tracking-wider">Configure Election Parameters</h3>
                       <p className={`text-xs mt-1 ${s.textMuted}`}>Establish the master election header and the exact time gate logic to secure your voting session.</p>
@@ -1557,14 +1633,14 @@ export default function App() {
                     </form>
 
                     <div className={`p-4 rounded-xl border text-xs leading-normal ${s.bgBanner}`}>
-                      <strong>Security Notice:</strong> The voter client application parses these parameters against its browser timestamp locally. Changing times here will immediately lock/unlock voting on all active browser tabs.
+                      <strong>Security Notice:</strong> The voter client application parses these parameters in real-time. Changing schedule metrics will immediately secure or lock voting boards.
                     </div>
                   </div>
                 )}
 
                 {/* Sub-View B4: Ballot designer (Positions & Candidates) */}
                 {adminTab === 'candidates' && (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
                     
                     {/* Block C1: Configure Positions */}
                     <div className={`p-6 rounded-2xl border space-y-4 h-fit ${s.bgCard}`}>
@@ -1703,7 +1779,7 @@ export default function App() {
 
                 {/* Sub-View B5: Voter Registry & Database Audit Sheet */}
                 {adminTab === 'voters' && (
-                  <div className={`p-6 rounded-2xl border space-y-4 ${s.bgCard}`}>
+                  <div className={`p-6 rounded-2xl border space-y-4 ${s.bgCard} animate-fadeIn`}>
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                       <div>
                         <h3 className={`text-sm font-bold uppercase tracking-widest ${s.textMuted}`}>Enrolled Database Record Sheets</h3>
@@ -1758,7 +1834,7 @@ export default function App() {
 
                 {/* Sub-View B6: Eligible Voter Whitelist Management */}
                 {adminTab === 'whitelist' && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fadeIn">
                     
                     {/* Add Whitelist ID Panel */}
                     <div className={`p-6 rounded-2xl border space-y-4 h-fit ${s.bgCard}`}>
