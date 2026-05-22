@@ -40,18 +40,20 @@ const initFirebase = () => {
 };
 
 export default function App() {
-  const DEFAULT_POSITIONS = ['President', 'Secretary General', 'Treasurer'];
+  const DEFAULT_POSITIONS = ['Presidential', 'Gubernatorial', 'Senatorial'];
   const DEFAULT_CANDIDATES = [
-    { id: 'c1', name: 'Comrade Yusuf Bello', post: 'President', association: 'NANS', votes: 0, color: 'bg-blue-600' },
-    { id: 'c2', name: 'Chinwe Okeke', post: 'President', association: 'NANS', votes: 0, color: 'bg-emerald-600' },
-    { id: 'c3', name: 'Ibrahim Musa', post: 'Secretary General', association: 'NANS', votes: 0, color: 'bg-amber-600' },
-    { id: 'c4', name: 'Sarah Udoh', post: 'Secretary General', association: 'NANS', votes: 0, color: 'bg-pink-600' }
+    { id: 'c1', name: 'Alhaji Yusuf Ibrahim', post: 'Presidential', association: 'APC', votes: 0, color: 'bg-blue-600' },
+    { id: 'c2', name: 'Chief Chinwe Okeke', post: 'Presidential', association: 'PDP', votes: 0, color: 'bg-emerald-600' },
+    { id: 'c3', name: 'Mr. Babatunde Balogun', post: 'Presidential', association: 'LP', votes: 0, color: 'bg-red-600' },
+    { id: 'c4', name: 'Engr. Haruna Musa', post: 'Presidential', association: 'NNPP', votes: 0, color: 'bg-amber-600' },
+    { id: 'c5', name: 'Dr. Sarah Udoh', post: 'Gubernatorial', association: 'LP', votes: 0, color: 'bg-pink-600' },
+    { id: 'c6', name: 'Malam Ibrahim Bello', post: 'Gubernatorial', association: 'APC', votes: 0, color: 'bg-indigo-600' }
   ];
-  const DEFAULT_WHITELIST = ['U15/CS/1001', 'U15/CS/1002', 'U15/CS/1003', 'U15/CS/1004', 'NIN20268899', 'NIN20265544'];
+  const DEFAULT_WHITELIST = ['10293847561', '98765432101', '45612378902', '78901234563', 'NIN20268899', 'NIN20265544'];
   const DEFAULT_ELECTION = {
-    name: 'SUG Presidential & General Election 2025/2026',
-    startTime: new Date(Date.now() - 3600000).toISOString().slice(0, 16),
-    endTime: new Date(Date.now() + 86400000).toISOString().slice(0, 16)
+    name: 'Nigeria National Presidential & General Election 2026',
+    startTime: new Date(Date.now() - 3600000).toISOString().slice(0, 16), // Starts 1hr ago
+    endTime: new Date(Date.now() + 86400000).toISOString().slice(0, 16)   // Ends in 24hrs
   };
 
   const [dbConnected, setDbConnected] = useState(false);
@@ -81,7 +83,7 @@ export default function App() {
   const [firstResetForm, setFirstResetForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   
   const [newPosition, setNewPosition] = useState('');
-  const [newCand, setNewCand] = useState({ name: '', post: 'President', association: '', color: 'bg-blue-600' });
+  const [newCand, setNewCand] = useState({ name: '', post: 'Presidential', association: '', color: 'bg-blue-600' });
   const [newWhitelistId, setNewWhitelistId] = useState('');
 
   const [alert, setAlert] = useState(null);
@@ -109,7 +111,7 @@ export default function App() {
           setUser(userCredential.user);
           setDbConnected(true);
         } catch (err) {
-          console.error("Firebase auth flow failed:", err);
+          console.error("Firebase authentication failed:", err);
         }
       };
 
@@ -123,7 +125,6 @@ export default function App() {
     const { db } = initFirebase();
     if (!db || !dbConnected) return;
 
-    // Sync Election Parameters Configuration
     const unsubscribeConfig = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'election'), (snapshot) => {
       if (snapshot.exists()) {
         setElectionConfig(snapshot.data());
@@ -132,7 +133,6 @@ export default function App() {
       }
     }, (error) => console.error("Election parameter stream error:", error));
 
-    // Sync Ballot Positions Parameters
     const unsubscribePositions = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'positions'), (snapshot) => {
       if (snapshot.exists()) {
         setPositions(snapshot.data().list || []);
@@ -141,7 +141,6 @@ export default function App() {
       }
     }, (error) => console.error("Ballot positions stream error:", error));
 
-    // Sync Registered Candidates List
     const unsubscribeCandidates = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'candidates'), (snapshot) => {
       if (snapshot.exists()) {
         setCandidates(snapshot.data().list || []);
@@ -150,7 +149,6 @@ export default function App() {
       }
     }, (error) => console.error("Candidates stream error:", error));
 
-    // Sync Voter Registration Whitelist Matrix
     const unsubscribeWhitelist = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'whitelist'), (snapshot) => {
       if (snapshot.exists()) {
         setWhitelist(snapshot.data().list || []);
@@ -159,7 +157,6 @@ export default function App() {
       }
     }, (error) => console.error("Whitelist stream error:", error));
 
-    // Sync Active Enrolled Voters List
     const unsubscribeVoters = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'voters'), (snapshot) => {
       if (snapshot.exists()) {
         const remoteVoters = snapshot.data().list || [];
@@ -306,11 +303,11 @@ export default function App() {
     }
 
     if (!whitelist.includes(cleanId)) {
-      return triggerAlert('Registration Blocked: ID/NIN is not on the administrator eligibility whitelist.', 'error');
+      return triggerAlert('Registration Blocked: This NIN / PVC is not on the national eligible whitelist registry.', 'error');
     }
 
     if (voters.some(v => v.id === cleanId)) {
-      return triggerAlert('Student ID/NIN has already been registered.', 'error');
+      return triggerAlert('NIN / PVC Number has already been registered on this node.', 'error');
     }
 
     const passCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -331,7 +328,7 @@ export default function App() {
     const updated = [...voters, newVoterObj];
     await saveVotersToCloud(updated);
     setGeneratedPass(passCode);
-    triggerAlert('Enrollment complete! Secure your auto-generated access key.', 'success');
+    triggerAlert('Enrollment complete! Secure your auto-generated voter credential code.', 'success');
   };
 
   const handleVoterLogin = (e) => {
@@ -350,7 +347,7 @@ export default function App() {
         triggerAlert(`Welcome back, ${voter.name}.`, 'success');
       }
     } else {
-      triggerAlert('Incorrect Voter Registration ID or Password Key.', 'error');
+      triggerAlert('Incorrect Voter Registration NIN/PVC or Password Key.', 'error');
     }
   };
 
@@ -396,7 +393,7 @@ export default function App() {
       setVoterTab('login');
       setResetForm({ id: '', dob: '', newPassword: '' });
     } else {
-      triggerAlert('Identity validation failed. Date of birth does not match ID.', 'error');
+      triggerAlert('Identity validation failed. Date of birth does not match NIN/PVC database.', 'error');
     }
   };
 
@@ -413,7 +410,7 @@ export default function App() {
     const start = new Date(electionConfig.startTime);
     const end = new Date(electionConfig.endTime);
     if (currentTime < start || currentTime > end) {
-      triggerAlert('System Lockout: Election is currently not active.', 'error');
+      triggerAlert('System Lockout: National Election window is currently not active.', 'error');
       setConfirmVoteModal(false);
       return;
     }
@@ -427,7 +424,6 @@ export default function App() {
     const receiptCode = 'SEC-REC-' + Math.random().toString(36).substring(2, 10).toUpperCase() + '-' + Math.floor(Math.random() * 9000 + 1000);
     const voteTime = new Date().toLocaleString();
 
-    // Increment Candidates Tally safely
     const updatedCandidates = candidates.map(cand => {
       const selectedForPost = ballotSelections[cand.post];
       if (selectedForPost && selectedForPost.id === cand.id) {
@@ -437,7 +433,6 @@ export default function App() {
     });
     await saveCandidatesToCloud(updatedCandidates);
 
-    // Dynamic Abstain compilation prevents unselected blockages
     const selectionsSummary = positions.map(pos => `${pos}: ${ballotSelections[pos]?.name || 'Abstained'}`).join(' | ');
 
     const updatedVoters = voters.map(v => {
@@ -531,7 +526,7 @@ export default function App() {
   const handleCreateCandidate = async (e) => {
     e.preventDefault();
     if (!newCand.name || !newCand.association) {
-      return triggerAlert('Please provide Name and Association.', 'error');
+      return triggerAlert('Please provide Name and Political Party.', 'error');
     }
 
     const brandNewCandidate = {
@@ -561,29 +556,29 @@ export default function App() {
     if (!cleanId) return;
     
     if (whitelist.includes(cleanId)) {
-      return triggerAlert('Registration Blocked: ID already exists in whitelist database.', 'error');
+      return triggerAlert('Registration Blocked: NIN / PVC already exists in eligibility database.', 'error');
     }
 
     const updatedWhitelist = [...whitelist, cleanId];
     await saveWhitelistToCloud(updatedWhitelist);
     setNewWhitelistId('');
-    triggerAlert(`Successfully whitelisted eligibility key: ${cleanId}`, 'success');
+    triggerAlert(`Successfully whitelisted eligibility NIN/PVC: ${cleanId}`, 'success');
   };
 
   const handleDeleteWhitelistId = async (idToDelete) => {
     const updated = whitelist.filter(id => id !== idToDelete);
     await saveWhitelistToCloud(updated);
-    triggerAlert('ID removed from eligibility whitelist matrix.', 'info');
+    triggerAlert('NIN / PVC removed from eligibility database.', 'info');
   };
 
   const handleSeedMockData = async () => {
     const mockVoters = [
-      { id: 'U15/CS/1001', name: 'Kabiru Adamu', email: 'k.adamu@uni.edu.ng', dob: '2001-05-12', password: 'DEMO1', hasVoted: true, votedFor: 'President: Comrade Yusuf Bello | Secretary General: Sarah Udoh | Treasurer: Abstained', receiptHash: 'SEC-REC-MOCK-1', timestamp: '5/18/2026, 11:30 AM', isFirstLogin: false },
-      { id: 'U15/CS/1002', name: 'Blessing Paul', email: 'b.paul@uni.edu.ng', dob: '2002-11-20', password: 'DEMO2', hasVoted: true, votedFor: 'President: Chinwe Okeke | Secretary General: Ibrahim Musa | Treasurer: Abstained', receiptHash: 'SEC-REC-MOCK-2', timestamp: '5/18/2026, 12:15 PM', isFirstLogin: false },
-      { id: 'U15/CS/1003', name: 'Mustapha Haruna', email: 'm.haruna@uni.edu.ng', dob: '2000-01-15', password: 'DEMO3', hasVoted: false, votedFor: null, receiptHash: '', timestamp: '', isFirstLogin: false }
+      { id: '10293847561', name: 'Alhaji Yusuf Ibrahim', email: 'y.ibrahim@electoral.gov.ng', dob: '1981-05-12', password: 'DEMO1', hasVoted: true, votedFor: 'Presidential: Chief Chinwe Okeke | Gubernatorial: Dr. Sarah Udoh', receiptHash: 'SEC-REC-MOCK-1', timestamp: '5/18/2026, 11:30 AM', isFirstLogin: false },
+      { id: '98765432101', name: 'Grace Chinedu', email: 'g.chinedu@electoral.gov.ng', dob: '1992-11-20', password: 'DEMO2', hasVoted: true, votedFor: 'Presidential: Mr. Babatunde Balogun | Gubernatorial: Abstained', receiptHash: 'SEC-REC-MOCK-2', timestamp: '5/18/2026, 12:15 PM', isFirstLogin: false },
+      { id: '45612378902', name: 'Mustapha Babangida', email: 'm.babangida@electoral.gov.ng', dob: '1988-01-15', password: 'DEMO3', hasVoted: false, votedFor: null, receiptHash: '', timestamp: '', isFirstLogin: false }
     ];
     await saveVotersToCloud(mockVoters);
-    triggerAlert('Demo metrics successfully loaded.', 'success');
+    triggerAlert('National Demo metrics successfully loaded.', 'success');
   };
 
   const handleResetApplicationState = async () => {
@@ -610,9 +605,9 @@ export default function App() {
         doc.rect(0, 0, 105, 15, 'F');
         
         doc.setFont('Helvetica', 'bold');
-        doc.setFontSize(10);
+        doc.setFontSize(9);
         doc.setTextColor(255, 255, 255);
-        doc.text('SECURE VOTE NODE - AUDIT SLIP', 8, 10);
+        doc.text('NATIONAL ELECTORAL PORTAL - AUDIT SLIP', 6, 10);
 
         doc.setFontSize(8);
         doc.setTextColor(50, 50, 50);
@@ -621,10 +616,10 @@ export default function App() {
         doc.line(8, 28, 97, 28);
 
         doc.setFont('Helvetica', 'bold');
-        doc.text('VOTER INFORMATION', 8, 34);
+        doc.text('CITIZEN INFORMATION', 8, 34);
         doc.setFont('Helvetica', 'normal');
         doc.text(`Name: ${currentVoter.name}`, 8, 39);
-        doc.text(`ID: ${currentVoter.id}`, 8, 44);
+        doc.text(`NIN / PVC No: ${currentVoter.id}`, 8, 44);
         
         doc.line(8, 49, 97, 49);
         doc.setFont('Helvetica', 'bold');
@@ -643,7 +638,7 @@ export default function App() {
         doc.text(`CRYPTO TRANSACTION HASH:`, 8, 83);
         doc.text(`${currentVoter.receiptHash}`, 8, 88);
 
-        doc.save(`VOTE_RECEIPT_${currentVoter.id}.pdf`);
+        doc.save(`INEC_VOTE_RECEIPT_${currentVoter.id}.pdf`);
         triggerAlert('Audit PDF receipt successfully saved.', 'success');
       } catch (err) {
         triggerAlert('Error printing PDF slip document.', 'error');
@@ -673,9 +668,9 @@ export default function App() {
         doc.rect(0, 0, 210, 25, 'F');
         
         doc.setFont('Helvetica', 'bold');
-        doc.setFontSize(16);
+        doc.setFontSize(15);
         doc.setTextColor(255, 255, 255);
-        doc.text('SECURE VOTE - SYSTEM REGISTERED VOTERS REPORT', 12, 16);
+        doc.text('NATIONAL ELECTORAL PORTAL - CITIZEN REGISTER REPORT', 12, 16);
 
         doc.setFontSize(9);
         doc.setTextColor(180, 180, 180);
@@ -687,9 +682,9 @@ export default function App() {
         doc.setFont('Helvetica', 'bold');
         
         doc.text('S/N', 12, 38);
-        doc.text('Student Name', 25, 38);
-        doc.text('ID / Matric No', 75, 38);
-        doc.text('Email Address', 110, 38);
+        doc.text('Voter Name', 25, 38);
+        doc.text('NIN / PVC Number', 75, 38);
+        doc.text('Email Address', 115, 38);
         doc.text('Status', 165, 38);
         doc.text('Pass Key', 185, 38);
         doc.line(12, 41, 198, 41);
@@ -705,7 +700,7 @@ export default function App() {
           doc.text(`${index + 1}`, 12, currentY);
           doc.text(v.name.slice(0, 22), 25, currentY);
           doc.text(v.id, 75, currentY);
-          doc.text(v.email.slice(0, 26), 110, currentY);
+          doc.text(v.email.slice(0, 26), 115, currentY);
           doc.text(v.hasVoted ? 'CASTED' : 'PENDING', 165, currentY);
           doc.text(v.password, 185, currentY);
           
@@ -713,8 +708,8 @@ export default function App() {
           currentY += 8;
         });
 
-        doc.save('Registered_Voters_Report.pdf');
-        triggerAlert('System registry PDF report exported.', 'success');
+        doc.save('National_Voters_Registry_Report.pdf');
+        triggerAlert('National registry PDF report exported.', 'success');
       } catch (err) {
         triggerAlert('Failed to generate PDF registry.', 'error');
         console.error(err);
@@ -760,7 +755,6 @@ export default function App() {
     bgTableHead: isDark ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500',
   };
 
-  // Ballot is fully complete when positions exist. Unselected entries register as Abstained.
   const isBallotComplete = positions.length > 0;
 
   return (
@@ -776,9 +770,9 @@ export default function App() {
               </svg>
             </div>
             <div>
-              <span className="text-xl font-extrabold tracking-wider bg-gradient-to-r from-teal-400 to-blue-400 bg-clip-text text-transparent">SECURE-VOTE</span>
+              <span className="text-xl font-extrabold tracking-wider bg-gradient-to-r from-teal-400 to-blue-400 bg-clip-text text-transparent">INEC PORTAL</span>
               <p className={`text-[10px] ${s.textMuted} uppercase tracking-widest font-mono flex items-center gap-1.5`}>
-                Dual-Node System
+                National Voting Node
                 <span className={`inline-block w-2 h-2 rounded-full ${dbConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} title={dbConnected ? "Real-time Cloud Node Active" : "Local Mirror State Active"}></span>
               </p>
             </div>
@@ -881,7 +875,7 @@ export default function App() {
                 <div className="mt-8 space-y-2">
                   <h3 className="text-lg font-black group-hover:text-blue-400 transition">Admin Node Portal</h3>
                   <p className={`text-xs leading-relaxed ${s.textMuted}`}>
-                    Global election configuration, candidate directory creation, voter ID whitelisting, and live tally audits.
+                    Global election configuration, candidate directory creation, voter NIN/PVC whitelisting, and live tally audits.
                   </p>
                 </div>
               </button>
@@ -904,18 +898,18 @@ export default function App() {
                       Voter Node Authentication
                     </span>
                     <h2 className="text-2xl font-black pt-1.5">Enter Voting Key</h2>
-                    <p className={`text-xs ${s.textMuted}`}>Provide your registered Voter Identity ID/NIN and secure password key.</p>
+                    <p className={`text-xs ${s.textMuted}`}>Provide your registered Voter Identity NIN / PVC and secure password key.</p>
                   </div>
 
                   <form onSubmit={handleVoterLogin} className="space-y-4">
                     <div>
-                      <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Student ID / Matric / NIN</label>
+                      <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>NIN / PVC Number</label>
                       <input 
                         type="text" 
                         value={loginForm.id} 
                         onChange={e => setLoginForm({ ...loginForm, id: e.target.value })} 
                         className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
-                        placeholder="e.g. U15/CS/1001" 
+                        placeholder="e.g. 10293847561" 
                         required 
                       />
                     </div>
@@ -957,7 +951,7 @@ export default function App() {
                   <div className={`p-6 rounded-2xl border ${s.bgCard} space-y-4`}>
                     <div>
                       <h3 className="text-md font-bold">Check Enrollment & Status</h3>
-                      <p className={`text-xs mt-0.5 ${s.textMuted}`}>Enter your ID/NIN to verify registration and ballot history.</p>
+                      <p className={`text-xs mt-0.5 ${s.textMuted}`}>Enter your NIN / PVC to verify registration and ballot history.</p>
                     </div>
 
                     <form onSubmit={handleInspectVoterStatus} className="flex gap-2">
@@ -965,7 +959,7 @@ export default function App() {
                         type="text" 
                         value={searchStatusQuery}
                         onChange={e => setSearchStatusQuery(e.target.value)}
-                        placeholder="e.g. U15/CS/1001"
+                        placeholder="e.g. 10293847561"
                         className={`px-3 py-2 text-xs rounded-xl flex-grow outline-none border ${s.bgInput}`}
                         required
                       />
@@ -978,13 +972,13 @@ export default function App() {
                     </form>
 
                     {searchedVoter && (
-                      <div className={`p-4 rounded-xl border text-xs space-y-2 font-mono ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                      <div className={`p-4 rounded-xl border text-xs space-y-2 font-mono ${isDark ? 'bg-slate-900 border-slate-880' : 'bg-slate-50 border-slate-200'}`}>
                         {searchedVoter.notFound ? (
                           <p className="text-red-400">⚠️ Profile '{searchedVoter.query}' is not currently registered.</p>
                         ) : (
                           <div className="space-y-1">
                             <p className="font-sans font-bold text-sm text-teal-400">{searchedVoter.name}</p>
-                            <p>ID: {searchedVoter.id}</p>
+                            <p>NIN / PVC: {searchedVoter.id}</p>
                             <div className="pt-2 border-t dark:border-slate-800 flex items-center justify-between">
                               <span>Status:</span>
                               <span className={`px-2 py-0.5 rounded font-sans text-[10px] font-black ${searchedVoter.hasVoted ? 'bg-emerald-950 text-emerald-300' : 'bg-amber-950 text-amber-300'}`}>
@@ -993,7 +987,7 @@ export default function App() {
                             </div>
                             {searchedVoter.hasVoted && (
                               <div className="pt-2 space-y-1 text-[11px]">
-                                <p className="text-emerald-400 font-sans">Timestamp: {searchedVoter.timestamp}</p>
+                                <p className="text-emerald-400 font-sans font-bold">Timestamp: {searchedVoter.timestamp}</p>
                                 <p className="text-[10px] opacity-75 truncate" title={searchedVoter.receiptHash}>Signature: {searchedVoter.receiptHash}</p>
                               </div>
                             )}
@@ -1005,8 +999,8 @@ export default function App() {
 
                   {/* Info Notice Box */}
                   <div className={`p-6 rounded-2xl border leading-relaxed text-xs space-y-2 ${s.bgBanner}`}>
-                    <h4 className="font-bold text-sm uppercase tracking-wider text-teal-400">Voter Enrollment Protocol</h4>
-                    <p>To successfully enroll your voting node onto this decentralized layout, your unique identification marker (Student ID or National Identity Number) must first be Whitelisted by the administrator authority panel.</p>
+                    <h4 className="font-bold text-sm uppercase tracking-wider text-teal-400">National Enrollment Protocol</h4>
+                    <p>To successfully enroll your voting node onto this decentralized layout, your unique national identification marker (NIN or Permanent Voter Card - PVC) must first be Whitelisted by the administrator authority panel.</p>
                   </div>
                 </div>
 
@@ -1021,12 +1015,12 @@ export default function App() {
                     Account Enrollment Node
                   </span>
                   <h2 className="text-2xl font-black pt-1.5">Create Secure Account</h2>
-                  <p className={`text-xs ${s.textMuted}`}>All registration entries are validated against the eligibility whitelists.</p>
+                  <p className={`text-xs ${s.textMuted}`}>All registration entries are validated against the eligible NIN/PVC whitelists.</p>
                 </div>
 
                 <form onSubmit={handleVoterRegister} className="space-y-4">
                   <div>
-                    <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Full Student Name</label>
+                    <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Full Voter Name</label>
                     <input 
                       type="text" 
                       value={regForm.name} 
@@ -1039,13 +1033,13 @@ export default function App() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Student ID / Matric / NIN</label>
+                      <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>NIN / PVC Number</label>
                       <input 
                         type="text" 
                         value={regForm.id} 
                         onChange={e => setRegForm({ ...regForm, id: e.target.value })} 
                         className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
-                        placeholder="e.g. U15/CS/1001" 
+                        placeholder="e.g. 10293847561" 
                         required 
                       />
                     </div>
@@ -1063,13 +1057,13 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Official University Email</label>
+                    <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Registered Voter Email</label>
                     <input 
                       type="email" 
                       value={regForm.email} 
                       onChange={e => setRegForm({ ...regForm, email: e.target.value })} 
                       className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
-                      placeholder="e.g. student@university.edu" 
+                      placeholder="e.g. voter@domain.gov.ng" 
                       required 
                     />
                   </div>
@@ -1114,13 +1108,13 @@ export default function App() {
 
                 <form onSubmit={handleDOBPasswordRecovery} className="space-y-4">
                   <div>
-                    <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Student ID / Matric / NIN</label>
+                    <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>NIN / PVC Number</label>
                     <input 
                       type="text" 
                       value={resetForm.id} 
                       onChange={e => setResetForm({ ...resetForm, id: e.target.value })} 
                       className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
-                      placeholder="e.g. U15/CS/1001" 
+                      placeholder="e.g. 10293847561" 
                       required 
                     />
                   </div>
@@ -1234,7 +1228,7 @@ export default function App() {
                     </span>
                     <h2 className="text-2xl font-black pt-1.5">{currentVoter.name}</h2>
                     <div className={`grid grid-cols-2 md:flex md:items-center gap-x-4 gap-y-1 text-xs font-mono ${s.textMuted}`}>
-                      <span>ID: <strong className={s.textMain}>{currentVoter.id}</strong></span>
+                      <span>NIN / PVC: <strong className={s.textMain}>{currentVoter.id}</strong></span>
                       <span className="hidden md:inline">|</span>
                       <span>Email: <strong className={s.textMain}>{currentVoter.email}</strong></span>
                     </div>
@@ -1300,7 +1294,7 @@ export default function App() {
                       <div className="space-y-6">
                         
                         <div className={`border-b pb-3 ${s.borderSub}`}>
-                          <h3 className="text-md font-bold">Consolidated Digital Election Ballot</h3>
+                          <h3 className="text-md font-bold">Consolidated Digital National Ballot</h3>
                           <p className={`text-xs mt-0.5 ${s.textMuted}`}>Make your selection for all open positions. Blank categories represent abstentions.</p>
                         </div>
 
@@ -1341,7 +1335,7 @@ export default function App() {
                                         >
                                           <div>
                                             <p className="text-sm font-bold">{cand.name}</p>
-                                            <span className={`text-[10px] font-mono uppercase ${s.textMuted}`}>{cand.association}</span>
+                                            <span className={`text-[10px] font-mono uppercase ${s.textMuted}`}>Coalition Party: {cand.association}</span>
                                           </div>
                                           <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${isSel ? 'border-teal-500 bg-teal-500 text-slate-950 font-black' : 'border-slate-400'}`}>
                                             {isSel && (
@@ -1379,7 +1373,7 @@ export default function App() {
                       <div className="space-y-4">
                         <h3 className="text-md font-bold text-teal-400 border-b pb-2">Cryptographic Transaction Receipt</h3>
                         
-                        <div className={`space-y-3 text-xs p-4 rounded-xl border font-mono ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                        <div className={`space-y-3 text-xs p-4 rounded-xl border font-mono ${isDark ? 'bg-slate-900 border-slate-880' : 'bg-slate-50 border-slate-200'}`}>
                           <div>
                             <span className={`block uppercase text-[10px] mb-1 ${s.textMuted}`}>Casted Selections:</span>
                             <div className="space-y-1">
@@ -1455,7 +1449,7 @@ export default function App() {
                 <div className={`p-6 rounded-2xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 ${s.bgCard}`}>
                   <div>
                     <h2 className="text-2xl font-black text-blue-400">Election Audit Command Node</h2>
-                    <p className={`text-xs ${s.textMuted}`}>Design ballot positions, candidate directories, audit verification lists, and inspect telemetry values.</p>
+                    <p className={`text-xs ${s.textMuted}`}>Design ballot positions, candidate directories, eligible voter whitelists, and live tally dashboards.</p>
                   </div>
 
                   <div className="flex flex-wrap gap-2 w-full md:w-auto">
@@ -1510,7 +1504,7 @@ export default function App() {
                     {/* Live Statistics Cards */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                       <div className={`p-4 rounded-xl border text-center ${s.bgCard}`}>
-                        <p className={`text-[10px] uppercase tracking-widest font-mono ${s.textMuted}`}>Enrolled Voters</p>
+                        <p className={`text-[10px] uppercase tracking-widest font-mono ${s.textMuted}`}>Enrolled Citizens</p>
                         <p className="text-3xl font-black mt-1 font-mono">{voters.length}</p>
                       </div>
 
@@ -1529,7 +1523,7 @@ export default function App() {
                       </div>
 
                       <div className={`p-4 rounded-xl border text-center ${s.bgCard}`}>
-                        <p className={`text-[10px] uppercase tracking-widest font-mono ${s.textMuted}`}>Whitelisted Keys</p>
+                        <p className={`text-[10px] uppercase tracking-widest font-mono ${s.textMuted}`}>Whitelisted NIN/PVC</p>
                         <p className="text-3xl font-black text-emerald-500 mt-1 font-mono">{whitelist.length}</p>
                       </div>
                     </div>
@@ -1561,7 +1555,7 @@ export default function App() {
 
                             return (
                               <div key={pos} className={`space-y-4 border-b pb-6 last:border-0 last:pb-0 ${s.borderSub}`}>
-                                <h4 className="text-sm font-black text-blue-400 uppercase tracking-wider">{pos} — {totalVotesForPosition} casted votes</h4>
+                                <h4 className="text-sm font-black text-blue-400 uppercase tracking-wider">{pos} Category — {totalVotesForPosition} casted votes</h4>
                                 
                                 {positionCandidates.length === 0 ? (
                                   <p className={`text-xs italic ${s.textMuted}`}>No candidate registers published for this office.</p>
@@ -1615,7 +1609,7 @@ export default function App() {
                           value={electionConfig.name}
                           onChange={e => setElectionConfig({ ...electionConfig, name: e.target.value })}
                           className={`w-full p-3 rounded-xl text-xs outline-none border ${s.bgInput}`}
-                          placeholder="e.g. SUG Presidential Elections 2025/2026"
+                          placeholder="e.g. Nigeria General Election 2026"
                           required
                         />
                       </div>
@@ -1648,7 +1642,7 @@ export default function App() {
                         type="submit" 
                         className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs p-3 rounded-xl transition shadow"
                       >
-                        Publish Election Window & Config
+                        Publish National Election Window & Config
                       </button>
                     </form>
 
@@ -1671,7 +1665,7 @@ export default function App() {
                           type="text" 
                           value={newPosition}
                           onChange={e => setNewPosition(e.target.value)}
-                          placeholder="e.g. Provost Marshal"
+                          placeholder="e.g. House of Reps"
                           className={`px-3 py-2 text-xs rounded-lg flex-grow outline-none border ${s.bgInput}`}
                           required
                         />
@@ -1710,7 +1704,7 @@ export default function App() {
                             type="text" 
                             value={newCand.name}
                             onChange={e => setNewCand({ ...newCand, name: e.target.value })}
-                            placeholder="e.g. Adamu Chinwe"
+                            placeholder="e.g. Alhaji Aminu Kano"
                             className={`w-full px-3 py-2 text-xs rounded-lg outline-none border ${s.bgInput}`}
                             required
                           />
@@ -1730,12 +1724,12 @@ export default function App() {
                         </div>
 
                         <div>
-                          <label className={`block text-[10px] uppercase font-bold mb-1 ${s.textMuted}`}>Coalition / Association</label>
+                          <label className={`block text-[10px] uppercase font-bold mb-1 ${s.textMuted}`}>Political Party / Coalition</label>
                           <input 
                             type="text" 
                             value={newCand.association}
                             onChange={e => setNewCand({ ...newCand, association: e.target.value })}
-                            placeholder="e.g. NANS / SUG"
+                            placeholder="e.g. APC, PDP, LP, NNPP"
                             className={`w-full px-3 py-2 text-xs rounded-lg outline-none border ${s.bgInput}`}
                             required
                           />
@@ -1748,10 +1742,11 @@ export default function App() {
                             onChange={e => setNewCand({ ...newCand, color: e.target.value })}
                             className={`w-full px-3 py-2 text-xs rounded-lg outline-none border ${s.bgInput}`}
                           >
-                            <option value="bg-blue-600">Ocean Blue</option>
-                            <option value="bg-emerald-600">Forest Green</option>
+                            <option value="bg-blue-600">Ocean Blue (APC)</option>
+                            <option value="bg-emerald-600">Forest Green (PDP)</option>
+                            <option value="bg-red-600">Crimson Red (LP)</option>
+                            <option value="bg-amber-600">Vibrant Amber (NNPP)</option>
                             <option value="bg-purple-600">Deep Purple</option>
-                            <option value="bg-amber-600">Vibrant Amber</option>
                             <option value="bg-pink-600">Rose Pink</option>
                             <option value="bg-indigo-600">Indigo Slate</option>
                           </select>
@@ -1769,7 +1764,7 @@ export default function App() {
 
                     {/* Block C3: Active Directory */}
                     <div className={`p-6 rounded-2xl border space-y-4 ${s.bgCard}`}>
-                      <h3 className="text-sm font-black text-blue-400 uppercase tracking-wider">Active Directory</h3>
+                      <h3 className="text-sm font-black text-blue-400 uppercase tracking-wider">Active Candidate Directory</h3>
                       
                       <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
                         {candidates.length === 0 ? (
@@ -1779,8 +1774,8 @@ export default function App() {
                             <div key={cand.id} className={`p-3 rounded-xl border flex justify-between items-center ${isDark ? 'bg-slate-900 border-slate-850' : 'bg-slate-50 border-slate-200'}`}>
                               <div>
                                 <h4 className="font-bold text-xs">{cand.name}</h4>
-                                <p className={`text-[10px] ${s.textMuted}`}>Position: <strong className="text-blue-400">{cand.post}</strong></p>
-                                <p className={`text-[9px] font-mono font-semibold ${s.textMuted}`}>Coalition: {cand.association}</p>
+                                <p className={`text-[10px] ${s.textMuted}`}>Office: <strong className="text-blue-400">{cand.post}</strong></p>
+                                <p className={`text-[9px] font-mono font-semibold ${s.textMuted}`}>Party: {cand.association}</p>
                               </div>
                               <button 
                                 onClick={() => handleDeleteCandidate(cand.id)}
@@ -1802,8 +1797,8 @@ export default function App() {
                   <div className={`p-6 rounded-2xl border space-y-4 ${s.bgCard} animate-fadeIn`}>
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                       <div>
-                        <h3 className={`text-sm font-bold uppercase tracking-widest ${s.textMuted}`}>Enrolled Database Record Sheets</h3>
-                        <p className={`text-xs ${s.textMuted}`}>Physical log file references representing students that finalized onboarding.</p>
+                        <h3 className={`text-sm font-bold uppercase tracking-widest ${s.textMuted}`}>Enrolled National Database Records</h3>
+                        <p className={`text-xs ${s.textMuted}`}>Secure register log representing registered citizens who finalized onboarding.</p>
                       </div>
 
                       <button 
@@ -1811,19 +1806,19 @@ export default function App() {
                         disabled={voters.length === 0}
                         className="bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-2"
                       >
-                        📥 Export PDF Registered List
+                        📥 Export Registry PDF Report
                       </button>
                     </div>
                     
                     {voters.length === 0 ? (
-                      <p className={`text-xs text-center py-6 italic ${s.textMuted}`}>No student voters stored in local databases.</p>
+                      <p className={`text-xs text-center py-6 italic ${s.textMuted}`}>No voters registered in databases.</p>
                     ) : (
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs min-w-[700px]">
                           <thead className={`text-[10px] uppercase tracking-wider border-b ${s.bgTableHead}`}>
                             <tr>
-                              <th className="p-3">Student Name</th>
-                              <th className="p-3 font-mono">Student ID / NIN</th>
+                              <th className="p-3">Citizen Name</th>
+                              <th className="p-3 font-mono">NIN / PVC Number</th>
                               <th className="p-3">Email Address</th>
                               <th className="p-3">Date of Birth</th>
                               <th className="p-3 text-center">Status</th>
@@ -1860,17 +1855,17 @@ export default function App() {
                     <div className={`p-6 rounded-2xl border space-y-4 h-fit ${s.bgCard}`}>
                       <div>
                         <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider">Whitelist Identity Keys</h3>
-                        <p className={`text-xs mt-1 ${s.textMuted}`}>Add student matric IDs or NIN numbers to grant system registration rights.</p>
+                        <p className={`text-xs mt-1 ${s.textMuted}`}>Add valid citizens' NIN or PVC numbers to authorize account registration rights.</p>
                       </div>
 
                       <form onSubmit={handleAddWhitelistId} className="space-y-3">
                         <div>
-                          <label className={`block text-[10px] uppercase font-bold mb-1 ${s.textMuted}`}>Student ID / Matric / NIN</label>
+                          <label className={`block text-[10px] uppercase font-bold mb-1 ${s.textMuted}`}>NIN / PVC Number</label>
                           <input 
                             type="text" 
                             value={newWhitelistId}
                             onChange={e => setNewWhitelistId(e.target.value)}
-                            placeholder="e.g. U15/CS/1004"
+                            placeholder="e.g. 10293847561"
                             className={`w-full px-3 py-2 text-xs rounded-lg outline-none border ${s.bgInput}`}
                             required
                           />
@@ -1885,7 +1880,7 @@ export default function App() {
                       </form>
 
                       <div className={`p-3 rounded-lg border text-[10.5px] leading-normal ${s.bgBanner}`}>
-                        ⚠️ <strong>Identity Constraint:</strong> The Voter registration process validates this list. If a student's ID/NIN isn't whitelisted here, registration is locked.
+                        ⚠️ <strong>Identity Constraint:</strong> The National Voter registration process validates this whitelist ledger. If a citizen's NIN / PVC is not whitelisted, registration is immediately blocked.
                       </div>
                     </div>
 
@@ -1893,7 +1888,7 @@ export default function App() {
                     <div className={`md:col-span-2 p-6 rounded-2xl border space-y-4 ${s.bgCard}`}>
                       <div>
                         <h3 className="text-sm font-bold uppercase tracking-widest">Pre-Eligible Whitelist Registry</h3>
-                        <p className={`text-xs ${s.textMuted}`}>Total Allowed Registrants: {whitelist.length}</p>
+                        <p className={`text-xs ${s.textMuted}`}>Total Authorized Registrants: {whitelist.length}</p>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[400px] overflow-y-auto pr-1">
@@ -1936,7 +1931,7 @@ export default function App() {
 
       {/* Footer Block */}
       <footer className={`${s.bgHeader} border-t py-6 px-6 mt-12 text-center text-xs transition-colors duration-200 ${s.textMuted} space-y-1`}>
-        <p>© 2026 Web-Based Online Cryptographic Voting Prototype.</p>
+        <p>© 2026 INEC National Online Cryptographic Voting Prototype.</p>
         <p className="font-mono text-[10px] uppercase tracking-widest text-teal-500">Distributed Multi-Node Local Verification Terminal</p>
       </footer>
 
@@ -1963,7 +1958,7 @@ export default function App() {
                 ))}
               </div>
 
-              <p className={`text-[10px] text-center leading-normal ${s.textMuted}`}>This ballot transaction will immediately lock your matric profile and cannot be reverted.</p>
+              <p className={`text-[10px] text-center leading-normal ${s.textMuted}`}>This ballot transaction will immediately lock your voter profile and cannot be reverted.</p>
             </div>
 
             <div className="grid grid-cols-2 gap-3 pt-2">
