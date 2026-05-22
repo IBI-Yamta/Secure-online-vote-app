@@ -2256,7 +2256,7 @@ export default function App() {
                 onClick={() => setConfirmVoteModal(false)} 
                 className={`py-2.5 px-4 rounded-xl text-xs font-semibold border transition ${s.bgButtonSec}`}
               >
-                Cancel
+                CANCEL
               </button>
               <button 
                 onClick={processCastBallot} 
