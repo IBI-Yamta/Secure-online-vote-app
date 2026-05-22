@@ -3,7 +3,7 @@ import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebase
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'secure-vote-node';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'secure-vote-national';
 let firebaseConfig = {};
 try {
   if (typeof __firebase_config !== 'undefined') {
@@ -52,8 +52,8 @@ export default function App() {
   const DEFAULT_WHITELIST = ['10293847561', '98765432101', '45612378902', '78901234563', 'NIN20268899', 'NIN20265544'];
   const DEFAULT_ELECTION = {
     name: 'Nigeria National Presidential & General Election 2026',
-    startTime: new Date(Date.now() - 3600000).toISOString().slice(0, 16), // Starts 1hr ago
-    endTime: new Date(Date.now() + 86400000).toISOString().slice(0, 16)   // Ends in 24hrs
+    startTime: new Date(Date.now() - 3600000).toISOString().slice(0, 16), 
+    endTime: new Date(Date.now() + 86400000).toISOString().slice(0, 16)   
   };
 
   const [dbConnected, setDbConnected] = useState(false);
@@ -77,11 +77,27 @@ export default function App() {
   const [voterTab, setVoterTab] = useState(currentVoter ? 'dashboard' : 'login');
   const [adminTab, setAdminTab] = useState('audit');
   const [adminPass, setAdminPass] = useState('');
-  const [regForm, setRegForm] = useState({ name: '', id: '', email: '', dob: '' });
+  
+  // Forms and Biometric States
+  const [regForm, setRegForm] = useState({ name: '', id: '', email: '', dob: '', faceImage: '' });
   const [loginForm, setLoginForm] = useState({ id: '', password: '' });
   const [resetForm, setResetForm] = useState({ id: '', dob: '', newPassword: '' });
   const [firstResetForm, setFirstResetForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   
+  // Custom camera references & biometric verification state
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [capturedPhoto, setCapturedPhoto] = useState(null);
+  const [biometricStep, setBiometricStep] = useState(false); // true if entering face scan during login
+  const [scanPhoto, setScanPhoto] = useState(null);
+  const [isAiVerifying, setIsAiVerifying] = useState(false);
+  const [biometricBypass, setBiometricBypass] = useState(() => {
+    return localStorage.getItem('evote_bio_bypass') === 'true';
+  });
+
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+
   const [newPosition, setNewPosition] = useState('');
   const [newCand, setNewCand] = useState({ name: '', post: 'Presidential', association: '', color: 'bg-blue-600' });
   const [newWhitelistId, setNewWhitelistId] = useState('');
@@ -191,6 +207,10 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
+    localStorage.setItem('evote_bio_bypass', biometricBypass ? 'true' : 'false');
+  }, [biometricBypass]);
+
+  useEffect(() => {
     localStorage.setItem('evote_admin_auth', isAdminAuthenticated ? 'true' : 'false');
   }, [isAdminAuthenticated]);
 
@@ -208,7 +228,7 @@ export default function App() {
   }, []);
 
   const timeoutIdRef = useRef(null);
-  const INACTIVITY_LIMIT = 5 * 60 * 1000; // 5 minutes
+  const INACTIVITY_LIMIT = 5 * 60 * 1000; 
 
   const triggerAutoLock = () => {
     if (currentVoter) {
@@ -236,6 +256,103 @@ export default function App() {
       if (timeoutIdRef.current) clearTimeout(timeoutIdRef.current);
     };
   }, [currentVoter, isAdminAuthenticated]);
+
+  const startCamera = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 320, height: 240, facingMode: "user" },
+        audio: false
+      });
+      streamRef.current = mediaStream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+      }
+      setIsCameraActive(true);
+    } catch (e) {
+      console.error("Camera capture access denied:", e);
+      triggerAlert("Camera access failed. Ensure permissions are granted.", "error");
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  const captureFrame = (isRegistering = true) => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const context = canvas.getContext('2d');
+      canvas.width = 320;
+      canvas.height = 240;
+      context.drawImage(video, 0, 0, 320, 240);
+      
+      // Compress frame to keep Firestore payload lightweight
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+      
+      if (isRegistering) {
+        setCapturedPhoto(dataUrl);
+        setRegForm(prev => ({ ...prev, faceImage: dataUrl }));
+      } else {
+        setScanPhoto(dataUrl);
+      }
+      stopCamera();
+    }
+  };
+
+  const evaluateBiometricSignature = async (voterRecord, scanFrame) => {
+    const apiKey = ""; // Relies on canvas runtime delivery
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+    
+    // Clean raw base64 data for inline processing
+    const cleanRegistered = voterRecord.faceImage.split(',')[1];
+    const cleanScan = scanFrame.split(',')[1];
+
+    const instruction = "You are a secure biometric verification processor. Compare the two facial photos. One is a registered ID, the other is a live webcam scan. Check if they belong to the same person. Ignore lighting variations or minor background differences. Return a JSON structure indicating if it is a match and the confidence score.";
+
+    const payload = {
+      contents: [{
+        parts: [
+          { text: "Compare these two photos. Determine if they belong to the same person." },
+          { inlineData: { mimeType: "image/jpeg", data: cleanRegistered } },
+          { inlineData: { mimeType: "image/jpeg", data: cleanScan } }
+        ]
+      }],
+      systemInstruction: {
+        parts: [{ text: instruction }]
+      },
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            match: { type: "BOOLEAN", description: "Must be true if photos match, otherwise false" },
+            confidence: { type: "INTEGER", description: "Match probability index from 0 to 100" },
+            reason: { type: "STRING", description: "Brief verification note" }
+          },
+          required: ["match", "confidence"]
+        }
+      }
+    };
+
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const resData = await response.json();
+      const outputText = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
+      return JSON.parse(outputText);
+    } catch (e) {
+      console.error("AI Face verification error:", e);
+      throw e;
+    }
+  };
 
   const savePositionsToCloud = async (updatedList) => {
     setPositions(updatedList);
@@ -277,23 +394,6 @@ export default function App() {
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'voters'), { list: updatedList });
   };
 
-  const triggerAlert = (message, type = 'info') => {
-    setAlert({ message, type });
-    setTimeout(() => setAlert(null), 5000);
-  };
-
-  const handleVoterLogout = (msg = 'Voter logged out successfully.') => {
-    setCurrentVoter(null);
-    setVoterTab('login');
-    triggerAlert(msg, 'info');
-  };
-
-  const handleAdminLogout = () => {
-    setIsAdminAuthenticated(false);
-    setAdminPass('');
-    triggerAlert('Admin logged out successfully.', 'info');
-  };
-
   const handleVoterRegister = async (e) => {
     e.preventDefault();
     const cleanId = regForm.id.trim().toUpperCase();
@@ -302,12 +402,16 @@ export default function App() {
       return triggerAlert('Please provide all details.', 'error');
     }
 
+    if (!regForm.faceImage) {
+      return triggerAlert('Biometrics required: Take a photo to complete setup registration.', 'error');
+    }
+
     if (!whitelist.includes(cleanId)) {
-      return triggerAlert('Registration Blocked: This NIN / PVC is not on the national eligible whitelist registry.', 'error');
+      return triggerAlert('Registration Blocked: This NIN / PVC is not whitelisted by the electoral board.', 'error');
     }
 
     if (voters.some(v => v.id === cleanId)) {
-      return triggerAlert('NIN / PVC Number has already been registered on this node.', 'error');
+      return triggerAlert('NIN / PVC Number has already been registered.', 'error');
     }
 
     const passCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -318,6 +422,7 @@ export default function App() {
       email: regForm.email.trim().toLowerCase(),
       dob: regForm.dob,
       password: passCode,
+      faceImage: regForm.faceImage,
       hasVoted: false,
       votedFor: null,
       receiptHash: '',
@@ -328,6 +433,7 @@ export default function App() {
     const updated = [...voters, newVoterObj];
     await saveVotersToCloud(updated);
     setGeneratedPass(passCode);
+    setCapturedPhoto(null);
     triggerAlert('Enrollment complete! Secure your auto-generated voter credential code.', 'success');
   };
 
@@ -337,17 +443,60 @@ export default function App() {
     const voter = voters.find(v => v.id === targetId && v.password === loginForm.password);
 
     if (voter) {
-      setCurrentVoter(voter);
-      setLoginForm({ id: '', password: '' });
-      if (voter.isFirstLogin) {
-        setVoterTab('first-login-reset');
-        triggerAlert('Temporary key detected. Configure custom security credentials.', 'info');
-      } else {
-        setVoterTab('dashboard');
-        triggerAlert(`Welcome back, ${voter.name}.`, 'success');
-      }
+      // Step to Biometric Face Scan Gate
+      setBiometricStep(true);
+      setScanPhoto(null);
+      triggerAlert('Password authenticated. Complete your facial scan to verify.', 'info');
     } else {
       triggerAlert('Incorrect Voter Registration NIN/PVC or Password Key.', 'error');
+    }
+  };
+
+  const executeFacialLoginVerification = async () => {
+    if (!scanPhoto) {
+      return triggerAlert('Biometric scan capture required.', 'error');
+    }
+
+    const targetId = loginForm.id.trim().toUpperCase();
+    const voter = voters.find(v => v.id === targetId);
+
+    if (!voter) return;
+
+    // Fast-track bypass mode for offline demonstration or locked configurations
+    if (biometricBypass) {
+      completeSystemAuthentication(voter);
+      return;
+    }
+
+    setIsAiVerifying(true);
+    try {
+      const response = await evaluateBiometricSignature(voter, scanPhoto);
+      
+      if (response.match && response.confidence >= 70) {
+        completeSystemAuthentication(voter);
+      } else {
+        triggerAlert(`Access Blocked: Biometric Mismatch (Match score: ${response.confidence || 0}%)`, 'error');
+        setScanPhoto(null);
+      }
+    } catch (err) {
+      console.error(err);
+      triggerAlert("Biometric server timeout. Attempt bypass or retry scan.", "error");
+    } finally {
+      setIsAiVerifying(false);
+    }
+  };
+
+  const completeSystemAuthentication = (voter) => {
+    setCurrentVoter(voter);
+    setLoginForm({ id: '', password: '' });
+    setBiometricStep(false);
+    setScanPhoto(null);
+    if (voter.isFirstLogin) {
+      setVoterTab('first-login-reset');
+      triggerAlert('Temporary key detected. Configure custom security credentials.', 'info');
+    } else {
+      setVoterTab('dashboard');
+      triggerAlert(`Welcome back, ${voter.name}.`, 'success');
     }
   };
 
@@ -573,9 +722,9 @@ export default function App() {
 
   const handleSeedMockData = async () => {
     const mockVoters = [
-      { id: '10293847561', name: 'Alhaji Yusuf Ibrahim', email: 'y.ibrahim@electoral.gov.ng', dob: '1981-05-12', password: 'DEMO1', hasVoted: true, votedFor: 'Presidential: Chief Chinwe Okeke | Gubernatorial: Dr. Sarah Udoh', receiptHash: 'SEC-REC-MOCK-1', timestamp: '5/18/2026, 11:30 AM', isFirstLogin: false },
-      { id: '98765432101', name: 'Grace Chinedu', email: 'g.chinedu@electoral.gov.ng', dob: '1992-11-20', password: 'DEMO2', hasVoted: true, votedFor: 'Presidential: Mr. Babatunde Balogun | Gubernatorial: Abstained', receiptHash: 'SEC-REC-MOCK-2', timestamp: '5/18/2026, 12:15 PM', isFirstLogin: false },
-      { id: '45612378902', name: 'Mustapha Babangida', email: 'm.babangida@electoral.gov.ng', dob: '1988-01-15', password: 'DEMO3', hasVoted: false, votedFor: null, receiptHash: '', timestamp: '', isFirstLogin: false }
+      { id: '10293847561', name: 'Alhaji Yusuf Ibrahim', email: 'y.ibrahim@electoral.gov.ng', dob: '1981-05-12', password: 'DEMO1', faceImage: 'face_placeholder', hasVoted: true, votedFor: 'Presidential: Chief Chinwe Okeke | Gubernatorial: Dr. Sarah Udoh', receiptHash: 'SEC-REC-MOCK-1', timestamp: '5/18/2026, 11:30 AM', isFirstLogin: false },
+      { id: '98765432101', name: 'Grace Chinedu', email: 'g.chinedu@electoral.gov.ng', dob: '1992-11-20', password: 'DEMO2', faceImage: 'face_placeholder', hasVoted: true, votedFor: 'Presidential: Mr. Babatunde Balogun | Gubernatorial: Abstained', receiptHash: 'SEC-REC-MOCK-2', timestamp: '5/18/2026, 12:15 PM', isFirstLogin: false },
+      { id: '45612378902', name: 'Mustapha Babangida', email: 'm.babangida@electoral.gov.ng', dob: '1988-01-15', password: 'DEMO3', faceImage: 'face_placeholder', hasVoted: false, votedFor: null, receiptHash: '', timestamp: '', isFirstLogin: false }
     ];
     await saveVotersToCloud(mockVoters);
     triggerAlert('National Demo metrics successfully loaded.', 'success');
@@ -857,7 +1006,7 @@ export default function App() {
                 <div className="mt-8 space-y-2">
                   <h3 className="text-lg font-black group-hover:text-teal-400 transition">Voter Node Client</h3>
                   <p className={`text-xs leading-relaxed ${s.textMuted}`}>
-                    Voter registration, eligibility checking, profile verification, and secure multi-position casting workflows.
+                    Voter registration, biometric enrollment, eligibility checking, profile verification, and secure multi-position casting workflows.
                   </p>
                 </div>
               </button>
@@ -893,46 +1042,121 @@ export default function App() {
                 
                 {/* Login Form Box */}
                 <div className={`p-8 rounded-2xl border ${s.bgCard} space-y-6`}>
-                  <div className="space-y-1">
-                    <span className="text-[10px] tracking-widest uppercase font-mono bg-teal-500/10 text-teal-400 border border-teal-500/30 px-2.5 py-1 rounded-full">
-                      Voter Node Authentication
-                    </span>
-                    <h2 className="text-2xl font-black pt-1.5">Enter Voting Key</h2>
-                    <p className={`text-xs ${s.textMuted}`}>Provide your registered Voter Identity NIN / PVC and secure password key.</p>
-                  </div>
+                  
+                  {!biometricStep ? (
+                    <>
+                      <div className="space-y-1">
+                        <span className="text-[10px] tracking-widest uppercase font-mono bg-teal-500/10 text-teal-400 border border-teal-500/30 px-2.5 py-1 rounded-full">
+                          Voter Node Authentication
+                        </span>
+                        <h2 className="text-2xl font-black pt-1.5">Enter Voting Key</h2>
+                        <p className={`text-xs ${s.textMuted}`}>Provide your registered Voter Identity NIN / PVC and secure password key.</p>
+                      </div>
 
-                  <form onSubmit={handleVoterLogin} className="space-y-4">
-                    <div>
-                      <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>NIN / PVC Number</label>
-                      <input 
-                        type="text" 
-                        value={loginForm.id} 
-                        onChange={e => setLoginForm({ ...loginForm, id: e.target.value })} 
-                        className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
-                        placeholder="e.g. 10293847561" 
-                        required 
-                      />
+                      <form onSubmit={handleVoterLogin} className="space-y-4">
+                        <div>
+                          <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>NIN / PVC Number</label>
+                          <input 
+                            type="text" 
+                            value={loginForm.id} 
+                            onChange={e => setLoginForm({ ...loginForm, id: e.target.value })} 
+                            className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
+                            placeholder="e.g. 10293847561" 
+                            required 
+                          />
+                        </div>
+
+                        <div>
+                          <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Security Password Key</label>
+                          <input 
+                            type="password" 
+                            value={loginForm.password} 
+                            onChange={e => setLoginForm({ ...loginForm, password: e.target.value })} 
+                            className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
+                            placeholder="••••••" 
+                            required 
+                          />
+                        </div>
+
+                        <button 
+                          type="submit" 
+                          className="w-full bg-teal-500 hover:bg-teal-400 text-slate-950 p-3.5 rounded-xl font-bold transition text-xs uppercase tracking-wider"
+                        >
+                          Authenticate Credentials
+                        </button>
+                      </form>
+                    </>
+                  ) : (
+                    <div className="space-y-6">
+                      <div className="space-y-1">
+                        <span className="text-[10px] tracking-widest uppercase font-mono bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 px-2.5 py-1 rounded-full">
+                          Biometric AI Verification
+                        </span>
+                        <h2 className="text-2xl font-black pt-1.5">Facial Identity Scan</h2>
+                        <p className={`text-xs ${s.textMuted}`}>Complete your live camera scan to verify against your registration records.</p>
+                      </div>
+
+                      <div className="flex flex-col items-center gap-4">
+                        {/* Live camera stream module container */}
+                        <div className="relative w-[240px] h-[180px] rounded-xl overflow-hidden border-2 border-indigo-500/50 bg-slate-900 shadow-md">
+                          {isCameraActive ? (
+                            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover transform -scale-x-100"></video>
+                          ) : scanPhoto ? (
+                            <img src={scanPhoto} alt="Captured scan" className="w-full h-full object-cover transform -scale-x-100" />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-slate-500 text-xs">
+                              <p>Camera is closed</p>
+                            </div>
+                          )}
+                          {isAiVerifying && (
+                            <div className="absolute inset-0 bg-indigo-950/60 flex flex-col items-center justify-center text-indigo-300 gap-2">
+                              <span className="w-8 h-8 border-4 border-indigo-400 border-t-transparent rounded-full animate-spin"></span>
+                              <span className="text-[10px] font-mono tracking-widest uppercase animate-pulse">Running AI Model...</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex gap-2 w-full">
+                          {!isCameraActive ? (
+                            <button
+                              type="button"
+                              onClick={startCamera}
+                              className={`flex-grow p-2.5 rounded-xl border text-xs font-bold transition ${s.bgButtonSec}`}
+                            >
+                              📷 Open Scanner
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => captureFrame(false)}
+                              className="flex-grow bg-indigo-600 hover:bg-indigo-500 text-white p-2.5 rounded-xl text-xs font-bold transition"
+                            >
+                              ⚡ Capture Scan
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={executeFacialLoginVerification}
+                        disabled={!scanPhoto || isAiVerifying}
+                        className={`w-full p-3.5 rounded-xl font-bold transition text-xs uppercase tracking-wider ${
+                          scanPhoto && !isAiVerifying ? 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg' : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        Verify Facials & Login
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => { setBiometricStep(false); stopCamera(); }}
+                        className="w-full text-center text-xs text-red-400 hover:underline block"
+                      >
+                        Cancel Biometrics
+                      </button>
                     </div>
-
-                    <div>
-                      <label className={`block text-xs uppercase font-bold mb-1.5 ${s.textMuted}`}>Security Password Key</label>
-                      <input 
-                        type="password" 
-                        value={loginForm.password} 
-                        onChange={e => setLoginForm({ ...loginForm, password: e.target.value })} 
-                        className={`w-full p-3 rounded-xl outline-none transition text-xs border ${s.bgInput}`}
-                        placeholder="••••••" 
-                        required 
-                      />
-                    </div>
-
-                    <button 
-                      type="submit" 
-                      className="w-full bg-teal-500 hover:bg-teal-400 text-slate-950 p-3.5 rounded-xl font-bold transition text-xs uppercase tracking-wider"
-                    >
-                      Authenticate Credentials
-                    </button>
-                  </form>
+                  )}
 
                   <div className="flex justify-between items-center text-xs pt-2 border-t dark:border-slate-800">
                     <button onClick={() => setVoterTab('register')} className="text-teal-400 hover:underline">
@@ -1015,7 +1239,7 @@ export default function App() {
                     Account Enrollment Node
                   </span>
                   <h2 className="text-2xl font-black pt-1.5">Create Secure Account</h2>
-                  <p className={`text-xs ${s.textMuted}`}>All registration entries are validated against the eligible NIN/PVC whitelists.</p>
+                  <p className={`text-xs ${s.textMuted}`}>All registration entries require facial biometric templates verified on whitelists.</p>
                 </div>
 
                 <form onSubmit={handleVoterRegister} className="space-y-4">
@@ -1068,6 +1292,43 @@ export default function App() {
                     />
                   </div>
 
+                  {/* Camera capture segment */}
+                  <div className="border border-slate-700/50 p-4 rounded-xl space-y-3">
+                    <label className={`block text-xs uppercase font-bold ${s.textMuted}`}>Biometric Portrait Setup</label>
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="relative w-48 h-36 rounded-lg bg-slate-900 overflow-hidden border border-slate-700 flex items-center justify-center">
+                        {isCameraActive ? (
+                          <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover transform -scale-x-100"></video>
+                        ) : capturedPhoto ? (
+                          <img src={capturedPhoto} alt="Biometric snap" className="w-full h-full object-cover transform -scale-x-100" />
+                        ) : (
+                          <span className="text-[10px] text-slate-500">Camera Closed</span>
+                        )}
+                        <canvas ref={canvasRef} className="hidden" />
+                      </div>
+                      
+                      <div className="flex gap-2 w-full">
+                        {!isCameraActive ? (
+                          <button
+                            type="button"
+                            onClick={startCamera}
+                            className={`flex-grow p-2 rounded-lg border text-xs font-bold transition ${s.bgButtonSec}`}
+                          >
+                            📷 Open Camera
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => captureFrame(true)}
+                            className="flex-grow bg-teal-600 hover:bg-teal-500 text-slate-950 p-2 rounded-lg text-xs font-bold transition"
+                          >
+                            ⚡ Capture Snap
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   <button 
                     type="submit" 
                     className="w-full bg-teal-500 hover:bg-teal-400 text-slate-950 p-3.5 rounded-xl font-bold transition text-xs uppercase tracking-wider"
@@ -1088,7 +1349,7 @@ export default function App() {
                 )}
 
                 <div className="pt-2 text-center border-t dark:border-slate-800">
-                  <button onClick={() => { setVoterTab('login'); setGeneratedPass(''); }} className="text-xs text-teal-400 hover:underline">
+                  <button onClick={() => { setVoterTab('login'); setGeneratedPass(''); stopCamera(); }} className="text-xs text-teal-400 hover:underline">
                     ⬅️ Back to Authentication
                   </button>
                 </div>
@@ -1222,15 +1483,22 @@ export default function App() {
                 
                 {/* Voter Profile Banner */}
                 <div className={`p-6 rounded-2xl border flex flex-col md:flex-row justify-between md:items-center gap-6 relative overflow-hidden ${s.bgCard}`}>
-                  <div className="space-y-1">
-                    <span className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full font-bold border ${s.bgBanner}`}>
-                      Validated Session Node
-                    </span>
-                    <h2 className="text-2xl font-black pt-1.5">{currentVoter.name}</h2>
-                    <div className={`grid grid-cols-2 md:flex md:items-center gap-x-4 gap-y-1 text-xs font-mono ${s.textMuted}`}>
-                      <span>NIN / PVC: <strong className={s.textMain}>{currentVoter.id}</strong></span>
-                      <span className="hidden md:inline">|</span>
-                      <span>Email: <strong className={s.textMain}>{currentVoter.email}</strong></span>
+                  <div className="flex items-center gap-4">
+                    {currentVoter.faceImage && (
+                      <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-teal-500/50">
+                        <img src={currentVoter.faceImage} alt="Voter profile template" className="w-full h-full object-cover transform -scale-x-100" />
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      <span className={`text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full font-bold border ${s.bgBanner}`}>
+                        Validated Session Node
+                      </span>
+                      <h2 className="text-2xl font-black pt-1.5">{currentVoter.name}</h2>
+                      <div className={`grid grid-cols-2 md:flex md:items-center gap-x-4 gap-y-1 text-xs font-mono ${s.textMuted}`}>
+                        <span>NIN / PVC: <strong className={s.textMain}>{currentVoter.id}</strong></span>
+                        <span className="hidden md:inline">|</span>
+                        <span>Email: <strong className={s.textMain}>{currentVoter.email}</strong></span>
+                      </div>
                     </div>
                   </div>
 
@@ -1453,6 +1721,20 @@ export default function App() {
                   </div>
 
                   <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                    {/* Bypass toggle to showcase offline authentication during system presentation */}
+                    <button 
+                      onClick={() => {
+                        const nextVal = !biometricBypass;
+                        setBiometricBypass(nextVal);
+                        triggerAlert(`AI Facial verification requirement: ${nextVal ? 'BYPASSED' : 'STRICT'}`, 'info');
+                      }}
+                      className={`text-xs px-3.5 py-2 rounded-lg font-bold transition border ${
+                        biometricBypass ? 'bg-amber-600/20 border-amber-500 text-amber-300' : s.bgButtonSec
+                      }`}
+                      title="If bypassed, facial scans will instantly login without calling Gemini API"
+                    >
+                      {biometricBypass ? '🔒 Enable strict AI face scan' : '🔓 Enable demo bypass mode'}
+                    </button>
                     <button 
                       onClick={handleSeedMockData} 
                       className={`text-xs px-3.5 py-2 rounded-lg font-bold transition border ${s.bgButtonSec}`}
@@ -1819,10 +2101,10 @@ export default function App() {
                             <tr>
                               <th className="p-3">Citizen Name</th>
                               <th className="p-3 font-mono">NIN / PVC Number</th>
+                              <th className="p-3 font-mono">Biometrics</th>
                               <th className="p-3">Email Address</th>
-                              <th className="p-3">Date of Birth</th>
                               <th className="p-3 text-center">Status</th>
-                              <th className="p-3 text-right">Master Code Key</th>
+                              <th className="p-3 text-right font-mono">Master Code Key</th>
                             </tr>
                           </thead>
                           <tbody className={`divide-y ${isDark ? 'divide-slate-900' : 'divide-slate-100'}`}>
@@ -1830,8 +2112,16 @@ export default function App() {
                               <tr key={v.id} className={isDark ? 'hover:bg-slate-900/50' : 'hover:bg-slate-50'}>
                                 <td className={`p-3 font-semibold ${s.textMain}`}>{v.name}</td>
                                 <td className="p-3 font-mono text-teal-400 font-bold">{v.id}</td>
+                                <td className="p-3">
+                                  {v.faceImage && v.faceImage !== 'face_placeholder' ? (
+                                    <div className="w-8 h-8 rounded-full overflow-hidden border border-slate-700">
+                                      <img src={v.faceImage} alt="Facial Biometric" className="w-full h-full object-cover transform -scale-x-100" />
+                                    </div>
+                                  ) : (
+                                    <span className="text-[10px] text-amber-500">❌ Missing</span>
+                                  )}
+                                </td>
                                 <td className={`p-3 ${s.textMuted}`}>{v.email}</td>
-                                <td className={`p-3 ${s.textMuted}`}>{v.dob}</td>
                                 <td className="p-3 text-center">
                                   <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-bold ${v.hasVoted ? 'bg-emerald-950 text-emerald-300 border border-emerald-900' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400 border dark:border-slate-700'}`}>
                                     {v.hasVoted ? 'CASTED' : 'PENDING'}
