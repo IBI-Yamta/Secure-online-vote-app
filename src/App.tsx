@@ -10,7 +10,8 @@ export default function App() {
     { id: 'c4', name: 'Prof. Babagana Zulum', post: 'Gubernatorial', association: 'APC', votes: 0, color: 'bg-purple-600' }
   ];
   const DEFAULT_WHITELIST = [
-    'NIN12345678901', 'NIN98765432109', 'PVC2026889911', 'PVC2026554422'
+    'NIN12345678901', 'NIN98765432109', 'PVC2026889911', 'PVC2026554422',
+    'NIN55443322110', 'PVC9988776655' // Standard-looking numbers targeted for mismatch failure simulation
   ];
   const DEFAULT_ELECTION = {
     name: 'Nigeria National General Elections 2025/2026',
@@ -165,11 +166,9 @@ export default function App() {
     setIsCapturingFace(true);
     setFaceEnrolled(false);
     
-    // Explicitly await the rendering context to mount video element, then start stream
     setTimeout(async () => {
       await startCameraStream();
       
-      // Keep stream running for 3 seconds to look like an analytical scan sequence
       setTimeout(() => {
         stopCameraStream();
         setIsCapturingFace(false);
@@ -213,7 +212,7 @@ export default function App() {
 
     setVoters([...voters, newVoter]);
     setGeneratedPass(passCode);
-    setFaceEnrolled(false); // Reset for next layout action
+    setFaceEnrolled(false); 
     triggerAlert('Registration Complete! Copy your temporary passkey below.', 'success');
   };
 
@@ -226,14 +225,25 @@ export default function App() {
       return triggerAlert('Invalid Credentials or ID profile reference.', 'error');
     }
 
-    // Trigger hardware camera matching sequence
+    // Trigger hardware camera stream mapping sequence
     setIsVerifyingFace(true);
     
     setTimeout(async () => {
       await startCameraStream();
 
+      // Keep stream active to mimic scanning matrix sequence
       setTimeout(() => {
         stopCameraStream();
+
+        // REJECTION EXCEPTION: Target numbers rule mismatch
+        if (targetId === 'NIN55443322110' || targetId === 'PVC9988776655') {
+          setIsVerifyingFace(false);
+          setFaceVerified(false);
+          triggerAlert('Mismatched certification failed: Facial biometric layout does not correspond to legal token owner.', 'error');
+          return;
+        }
+
+        // Standard clearance path if not simulated anomaly profiles
         setIsVerifyingFace(false);
         setFaceVerified(true);
         
@@ -433,7 +443,6 @@ export default function App() {
               <h1 className="text-3xl font-black tracking-tight">Electoral Node System Framework</h1>
               <p className={`text-sm ${s.textMuted}`}>
                 National Online Voting Prototype with Live Biometric Face Identity Hardware Streams.
-                Open both terminals side-by-side to observe multi-client updates.
               </p>
             </div>
 
@@ -449,6 +458,15 @@ export default function App() {
                 <h3 className="text-lg font-bold mt-4 group-hover:text-emerald-500 transition">Admin Node Portal</h3>
                 <p className={`text-xs mt-1 ${s.textMuted}`}>Control national eligibility whitelists, adjust time window schedules, upload candidate rosters, and audit results.</p>
               </button>
+            </div>
+
+            <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-left max-w-md mx-auto">
+              <p className="text-xs font-bold text-amber-500 uppercase tracking-wide">Defense Testing Protocols:</p>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed font-sans">
+                Test numbers designed to fail biometric mismatch verification during authentication:<br />
+                • Blocked NIN Token Code: <span className="text-white font-mono bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">NIN55443322110</span><br />
+                • Blocked PVC Token Code: <span className="text-white font-mono bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">PVC9988776655</span>
+              </p>
             </div>
           </div>
         )}
@@ -471,18 +489,10 @@ export default function App() {
                   <p className={`text-xs ${s.textMuted}`}>Input your details and connect your media device camera array to log your biometric template signature.</p>
                 </div>
 
-                {/* Webcam Live Stream Viewport Container */}
                 <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-center space-y-3 relative overflow-hidden min-h-[220px] flex flex-col justify-center items-center">
                   {isCapturingFace ? (
                     <div className="w-full max-w-[280px] aspect-video bg-black rounded-lg overflow-hidden border border-slate-700 relative">
-                      <video 
-                        ref={videoRef} 
-                        autoPlay 
-                        playsInline 
-                        muted 
-                        className="w-full h-full object-cover scale-x-[-1]"
-                      />
-                      {/* Scanning visual overlay overlay line */}
+                      <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
                       <div className="absolute inset-x-0 h-0.5 bg-emerald-400 opacity-80 shadow-[0_0_8px_#34d399] animate-[scan_2s_linear_infinite]" style={{ top: '0%' }} />
                     </div>
                   ) : faceEnrolled ? (
@@ -559,7 +569,6 @@ export default function App() {
                   <p className={`text-xs ${s.textMuted}`}>Input security passcode tokens followed by structural facial signature validation mapping checks.</p>
                 </div>
 
-                {/* Simulated Live Scan Feedback Overlay during authentication process */}
                 {isVerifyingFace || faceVerified ? (
                   <div className="p-6 bg-slate-950 border border-slate-800 rounded-2xl text-center space-y-4 flex flex-col items-center">
                     <div className="w-full max-w-[260px] aspect-video bg-black rounded-xl overflow-hidden border border-slate-700 relative">
@@ -569,13 +578,7 @@ export default function App() {
                         </div>
                       ) : (
                         <>
-                          <video 
-                            ref={videoRef} 
-                            autoPlay 
-                            playsInline 
-                            muted 
-                            className="w-full h-full object-cover scale-x-[-1]"
-                          />
+                          <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
                           <div className="absolute inset-x-0 h-0.5 bg-emerald-400 opacity-80 shadow-[0_0_8px_#34d399] animate-[scan_2s_linear_infinite]" style={{ top: '0%' }} />
                         </>
                       )}
@@ -607,7 +610,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Voter Password Reset / First Customization */}
+            {/* Voter Password Reset */}
             {voterTab === 'first-login-reset' && currentVoter && (
               <div className={`p-6 rounded-2xl border ${s.bgCard} max-w-md mx-auto space-y-4`}>
                 <div>
@@ -637,7 +640,6 @@ export default function App() {
             {/* Voter Ballot Dashboard Platform */}
             {voterTab === 'dashboard' && currentVoter && (
               <div className="space-y-6">
-                {/* Information Card Banner */}
                 <div className={`p-6 rounded-2xl border ${s.bgCard} flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4`}>
                   <div>
                     <h2 className="text-xl font-black text-emerald-400">{currentVoter.name}</h2>
@@ -739,7 +741,6 @@ export default function App() {
               </div>
             ) : (
               <div className="space-y-6">
-                {/* Admin Navbar Controls */}
                 <div className={`p-4 rounded-xl border ${s.bgCard} flex flex-wrap justify-between items-center gap-4`}>
                   <div className="flex gap-2">
                     <button onClick={() => setAdminTab('election')} className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${adminTab === 'election' ? 'bg-emerald-600 text-white' : s.btnSec}`}>Election Parameters</button>
@@ -752,7 +753,6 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Subview Content Controller */}
                 {adminTab === 'election' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className={`p-6 rounded-2xl border ${s.bgCard} space-y-4`}>
