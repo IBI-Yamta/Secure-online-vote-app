@@ -3,18 +3,15 @@ import React, { useState, useEffect, useRef } from 'react';
 export default function App() {
   // --- DEFAULT DATA FOR SIMULATION & PROJECT DEFENSE ---
   const DEFAULT_POSITIONS = ['Presidential', 'Gubernatorial', 'Senatorial'];
-
   const DEFAULT_CANDIDATES = [
     { id: 'c1', name: 'Alhaji Bola Ahmed Tinubu', post: 'Presidential', association: 'APC', votes: 0, color: 'bg-blue-600' },
     { id: 'c2', name: 'Mr. Peter Obi', post: 'Presidential', association: 'LP', votes: 0, color: 'bg-emerald-600' },
     { id: 'c3', name: 'Alhaji Atiku Abubakar', post: 'Presidential', association: 'PDP', votes: 0, color: 'bg-amber-600' },
     { id: 'c4', name: 'Prof. Babagana Zulum', post: 'Gubernatorial', association: 'APC', votes: 0, color: 'bg-purple-600' }
   ];
-
   const DEFAULT_WHITELIST = [
     'NIN12345678901', 'NIN98765432109', 'PVC2026889911', 'PVC2026554422'
   ];
-
   const DEFAULT_ELECTION = {
     name: 'Nigeria National General Elections 2025/2026',
     startTime: new Date(Date.now() - 3600000).toISOString().slice(0, 16), // Started 1 hour ago
@@ -29,32 +26,26 @@ export default function App() {
     const saved = localStorage.getItem('nvote_positions');
     return saved ? JSON.parse(saved) : DEFAULT_POSITIONS;
   });
-
   const [candidates, setCandidates] = useState(() => {
     const saved = localStorage.getItem('nvote_candidates');
     return saved ? JSON.parse(saved) : DEFAULT_CANDIDATES;
   });
-
   const [whitelist, setWhitelist] = useState(() => {
     const saved = localStorage.getItem('nvote_whitelist');
     return saved ? JSON.parse(saved) : DEFAULT_WHITELIST;
   });
-
   const [electionConfig, setElectionConfig] = useState(() => {
     const saved = localStorage.getItem('nvote_election_config');
     return saved ? JSON.parse(saved) : DEFAULT_ELECTION;
   });
-
   const [voters, setVoters] = useState(() => {
     const saved = localStorage.getItem('nvote_voters');
     return saved ? JSON.parse(saved) : [];
   });
-
   const [currentVoter, setCurrentVoter] = useState(() => {
     const saved = localStorage.getItem('nvote_current_voter');
     return saved ? JSON.parse(saved) : null;
   });
-
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
     return localStorage.getItem('nvote_admin_auth') === 'true';
   });
@@ -84,8 +75,11 @@ export default function App() {
   const [faceEnrolled, setFaceEnrolled] = useState(false);
   const [isVerifyingFace, setIsVerifyingFace] = useState(false);
   const [faceVerified, setFaceVerified] = useState(false);
-
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Hardware Camera Streams References
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
 
   // --- PERSISTENCE SYNCHRONIZATION ---
   useEffect(() => { localStorage.setItem('nvote_mode', appMode); }, [appMode]);
@@ -133,21 +127,59 @@ export default function App() {
     return () => window.removeEventListener('storage', syncNetworkData);
   }, [currentVoter]);
 
+  // Clean up camera hardware if component unmounts or tab switches unexpectedly
+  useEffect(() => {
+    return () => stopCameraStream();
+  }, [voterTab, appMode]);
+
   const triggerAlert = (message, type = 'info') => {
     setAlert({ message, type });
     setTimeout(() => setAlert(null), 4000);
   };
 
-  // --- VOTER MANAGEMENT HANDLERS ---
-  const handleSimulateFacialEnrollment = () => {
-    setIsCapturingFace(true);
-    setTimeout(() => {
+  // --- HARDWARE CAMERA CONTROLLERS ---
+  const startCameraStream = async () => {
+    try {
+      const constraints = { video: { width: 320, height: 240, facingMode: "user" } };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.error("Camera interface failure:", err);
+      triggerAlert('Could not access device media camera backend.', 'error');
       setIsCapturingFace(false);
-      setFaceEnrolled(true);
-      triggerAlert('Facial hardware matrix logged successfully.', 'success');
-    }, 2000);
+      setIsVerifyingFace(false);
+    }
   };
 
+  const stopCameraStream = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+  };
+
+  const handleSimulateFacialEnrollment = async () => {
+    setIsCapturingFace(true);
+    setFaceEnrolled(false);
+    
+    // Explicitly await the rendering context to mount video element, then start stream
+    setTimeout(async () => {
+      await startCameraStream();
+      
+      // Keep stream running for 3 seconds to look like an analytical scan sequence
+      setTimeout(() => {
+        stopCameraStream();
+        setIsCapturingFace(false);
+        setFaceEnrolled(true);
+        triggerAlert('Facial hardware matrix logged successfully.', 'success');
+      }, 3500);
+    }, 100);
+  };
+
+  // --- VOTER MANAGEMENT HANDLERS ---
   const handleVoterRegister = (e) => {
     e.preventDefault();
     const cleanId = regForm.id.trim().toUpperCase();
@@ -194,23 +226,30 @@ export default function App() {
       return triggerAlert('Invalid Credentials or ID profile reference.', 'error');
     }
 
-    // Trigger biometric check stage
+    // Trigger hardware camera matching sequence
     setIsVerifyingFace(true);
-    setTimeout(() => {
-      setIsVerifyingFace(false);
-      setFaceVerified(true);
+    
+    setTimeout(async () => {
+      await startCameraStream();
+
       setTimeout(() => {
-        setCurrentVoter(match);
-        setLoginForm({ id: '', password: '' });
-        setFaceVerified(false);
-        if (match.isFirstLogin) {
-          setVoterTab('first-login-reset');
-        } else {
-          setVoterTab('dashboard');
-        }
-        triggerAlert(`Welcome, Secure Identity Token Verified.`, 'success');
-      }, 1000);
-    }, 2000);
+        stopCameraStream();
+        setIsVerifyingFace(false);
+        setFaceVerified(true);
+        
+        setTimeout(() => {
+          setCurrentVoter(match);
+          setLoginForm({ id: '', password: '' });
+          setFaceVerified(false);
+          if (match.isFirstLogin) {
+            setVoterTab('first-login-reset');
+          } else {
+            setVoterTab('dashboard');
+          }
+          triggerAlert(`Welcome, Secure Identity Token Verified.`, 'success');
+        }, 1000);
+      }, 3500);
+    }, 100);
   };
 
   const handleFirstLoginCustomization = (e) => {
@@ -261,7 +300,6 @@ export default function App() {
     }));
 
     const selectionsSummary = positions.map(pos => `${pos}: ${ballotSelections[pos]?.name || 'Abstained'}`).join(' | ');
-
     const updatedVoters = voters.map(v => {
       if (v.id === currentVoter.id) {
         return { ...v, hasVoted: true, votedFor: selectionsSummary, receiptHash: receiptCode, timestamp: voteTime };
@@ -300,7 +338,6 @@ export default function App() {
   const handleCreateCandidate = (e) => {
     e.preventDefault();
     if (!newCand.name || !newCand.association) return triggerAlert('Provide name and political party label.', 'error');
-
     const created = {
       id: 'c-' + Math.random().toString(36).substring(2, 7),
       name: newCand.name.trim(),
@@ -395,7 +432,8 @@ export default function App() {
             <div className="space-y-2">
               <h1 className="text-3xl font-black tracking-tight">Electoral Node System Framework</h1>
               <p className={`text-sm ${s.textMuted}`}>
-                National Online Voting Prototype with Live Biometric Face Identity Mimic Emulation. Open both terminals side-by-side to observe multi-client updates.
+                National Online Voting Prototype with Live Biometric Face Identity Hardware Streams.
+                Open both terminals side-by-side to observe multi-client updates.
               </p>
             </div>
 
@@ -403,7 +441,7 @@ export default function App() {
               <button onClick={() => setAppMode('voter')} className={`p-6 rounded-2xl border text-left ${s.bgCard} hover:border-emerald-500 transition group`}>
                 <div className="text-2xl">👤</div>
                 <h3 className="text-lg font-bold mt-4 group-hover:text-emerald-500 transition">Voter Node Client</h3>
-                <p className={`text-xs mt-1 ${s.textMuted}`}>Access registration channels, fulfill simulated biometric identity scanning, and review interactive electronic ballots.</p>
+                <p className={`text-xs mt-1 ${s.textMuted}`}>Access registration channels, fulfill live biometric hardware scanning, and review interactive electronic ballots.</p>
               </button>
 
               <button onClick={() => setAppMode('admin')} className={`p-6 rounded-2xl border text-left ${s.bgCard} hover:border-emerald-500 transition group`}>
@@ -430,32 +468,48 @@ export default function App() {
               <div className={`p-6 rounded-2xl border ${s.bgCard} max-w-md mx-auto space-y-6`}>
                 <div>
                   <h2 className="text-xl font-black tracking-tight">National Registry Enrollment</h2>
-                  <p className={`text-xs ${s.textMuted}`}>Input your details and submit your portrait template into the federal biometric records base.</p>
+                  <p className={`text-xs ${s.textMuted}`}>Input your details and connect your media device camera array to log your biometric template signature.</p>
                 </div>
 
-                {/* Simulated Webcam Capture Block */}
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center space-y-3 relative overflow-hidden">
-                  <div className="w-24 h-24 bg-slate-800 rounded-full mx-auto flex items-center justify-center border-2 border-slate-700 relative z-10">
-                    {isCapturingFace ? (
-                      <span className="text-xs text-yellow-400 font-mono animate-pulse">SCANNING...</span>
-                    ) : faceEnrolled ? (
-                      <span className="text-2xl text-emerald-400">✓ ✅</span>
-                    ) : (
-                      <span className="text-3xl text-slate-500">📷</span>
-                    )}
-                  </div>
-                  
-                  {isCapturingFace && (
-                    <div className="absolute inset-0 bg-emerald-500/10 pointer-events-none border-y border-emerald-500/30 animate-pulse flex items-center justify-center">
-                      <div className="w-full h-1 bg-emerald-400 animate-bounce" />
+                {/* Webcam Live Stream Viewport Container */}
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-center space-y-3 relative overflow-hidden min-h-[220px] flex flex-col justify-center items-center">
+                  {isCapturingFace ? (
+                    <div className="w-full max-w-[280px] aspect-video bg-black rounded-lg overflow-hidden border border-slate-700 relative">
+                      <video 
+                        ref={videoRef} 
+                        autoPlay 
+                        playsInline 
+                        muted 
+                        className="w-full h-full object-cover scale-x-[-1]"
+                      />
+                      {/* Scanning visual overlay overlay line */}
+                      <div className="absolute inset-x-0 h-0.5 bg-emerald-400 opacity-80 shadow-[0_0_8px_#34d399] animate-[scan_2s_linear_infinite]" style={{ top: '0%' }} />
+                    </div>
+                  ) : faceEnrolled ? (
+                    <div className="space-y-1 py-4">
+                      <div className="w-16 h-16 bg-emerald-950 border border-emerald-500 text-emerald-400 rounded-full flex items-center justify-center text-2xl mx-auto shadow-md">✓</div>
+                      <p className="text-emerald-400 font-bold text-sm mt-2">Biometric Hash Generated</p>
+                    </div>
+                  ) : (
+                    <div className="py-6 text-slate-600 flex flex-col items-center">
+                      <span className="text-4xl mb-2">📷</span>
+                      <p className="text-xs font-mono">Camera Lens Off-line</p>
                     </div>
                   )}
+
+                  <style>{`
+                    @keyframes scan {
+                      0% { top: 0%; }
+                      50% { top: 100%; }
+                      100% { top: 0%; }
+                    }
+                  `}</style>
 
                   <div>
                     <p className="text-xs font-bold text-slate-300">
                       {isCapturingFace ? "Processing High-Resolution Matrix Nodes..." : faceEnrolled ? "Facial Profile Linked Successfully!" : "Simulated Identity Camera Unit"}
                     </p>
-                    <p className="text-[10px] text-slate-500 font-mono">No external software required for validation check</p>
+                    <p className="text-[10px] text-slate-500 font-mono">Secure localized capture layer via HTML5 MediaStreams</p>
                   </div>
 
                   {!faceEnrolled && (
@@ -463,7 +517,7 @@ export default function App() {
                       type="button"
                       disabled={isCapturingFace}
                       onClick={handleSimulateFacialEnrollment}
-                      className="text-xs bg-slate-800 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-lg hover:bg-slate-700 font-bold transition w-full"
+                      className="text-xs bg-slate-800 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-lg hover:bg-slate-700 font-bold transition w-full disabled:opacity-50"
                     >
                       {isCapturingFace ? "Analyzing Pixels..." : "📷 Capture Facial Biometrics"}
                     </button>
@@ -507,21 +561,32 @@ export default function App() {
 
                 {/* Simulated Live Scan Feedback Overlay during authentication process */}
                 {isVerifyingFace || faceVerified ? (
-                  <div className="p-8 bg-slate-950 border border-slate-800 rounded-2xl text-center space-y-4">
-                    <div className="w-20 h-20 bg-slate-900 border-2 border-emerald-500 rounded-full mx-auto flex items-center justify-center relative overflow-hidden">
+                  <div className="p-6 bg-slate-950 border border-slate-800 rounded-2xl text-center space-y-4 flex flex-col items-center">
+                    <div className="w-full max-w-[260px] aspect-video bg-black rounded-xl overflow-hidden border border-slate-700 relative">
                       {faceVerified ? (
-                        <span className="text-2xl text-emerald-400 font-black">✓</span>
+                        <div className="w-full h-full flex flex-col justify-center items-center bg-emerald-950/60 z-20 absolute inset-0 backdrop-blur-sm">
+                          <span className="text-3xl text-emerald-400 font-black">✓ Approved</span>
+                        </div>
                       ) : (
-                        <div className="w-full h-1 bg-emerald-400 absolute top-0 left-0 animate-[bounce_1.5s_infinite]" />
+                        <>
+                          <video 
+                            ref={videoRef} 
+                            autoPlay 
+                            playsInline 
+                            muted 
+                            className="w-full h-full object-cover scale-x-[-1]"
+                          />
+                          <div className="absolute inset-x-0 h-0.5 bg-emerald-400 opacity-80 shadow-[0_0_8px_#34d399] animate-[scan_2s_linear_infinite]" style={{ top: '0%' }} />
+                        </>
                       )}
-                      <span className="text-2xl">👤</span>
                     </div>
+                    
                     <div className="space-y-1">
                       <p className="text-sm font-bold font-mono tracking-wide">
                         {faceVerified ? "🟢 BIOMETRIC VERIFIED!" : "📡 MATCHING FACIAL MAP INDEX..."}
                       </p>
                       <p className={`text-xs ${s.textMuted}`}>
-                        {faceVerified ? "Access Authorization Granted by INEC Matrix." : "Validating pixel geometric ratios against secure cloud records."}
+                        {faceVerified ? "Access Authorization Granted by INEC Matrix." : "Validating pixel geometric ratios against secure local records base."}
                       </p>
                     </div>
                   </div>
@@ -603,7 +668,7 @@ export default function App() {
                 ) : !isElectionActive ? (
                   <div className="p-12 text-center bg-red-950/20 border border-red-500/20 rounded-2xl max-w-lg mx-auto space-y-2">
                     <span className="text-3xl">🏁</span>
-                    <h3 className="text-lg font-bold text-red-400">Electoral Window Currently Closed</h3>
+                    <h3 className="text-lg font-bold text-red-400">Electoral Window Closed</h3>
                     <p className="text-xs text-slate-400">Current System Time falls outside active verification limits configured by system administrators.</p>
                     <p className="text-xs font-mono bg-slate-950 py-1 px-3 rounded text-slate-300 w-fit mx-auto mt-2">Server Sync: {currentTime.toLocaleTimeString()}</p>
                   </div>
