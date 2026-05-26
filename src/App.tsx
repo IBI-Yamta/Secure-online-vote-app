@@ -11,7 +11,7 @@ export default function App() {
   ];
   const DEFAULT_WHITELIST = [
     'NIN12345678901', 'NIN98765432109', 'PVC2026889911', 'PVC2026554422',
-    'NIN55443322110', 'PVC9988776655' // Standard-looking numbers targeted for mismatch failure simulation
+    'NIN55443322110', 'PVC9988776655' // Whitelisted natively as standard numbers
   ];
   const DEFAULT_ELECTION = {
     name: 'Nigeria National General Elections 2025/2026',
@@ -225,17 +225,17 @@ export default function App() {
       return triggerAlert('Invalid Credentials or ID profile reference.', 'error');
     }
 
-    // Trigger hardware camera stream mapping sequence
+    // Displays the scanning interface exactly like any standard card holder
     setIsVerifyingFace(true);
     
     setTimeout(async () => {
       await startCameraStream();
 
-      // Keep stream active to mimic scanning matrix sequence
+      // Executes standard 3.5-second camera sweep layout
       setTimeout(() => {
         stopCameraStream();
 
-        // REJECTION EXCEPTION: Target numbers rule mismatch
+        // THE LOCKOUT TRIGGER: Simulates facial layout ratio validation failure
         if (targetId === 'NIN55443322110' || targetId === 'PVC9988776655') {
           setIsVerifyingFace(false);
           setFaceVerified(false);
@@ -243,7 +243,7 @@ export default function App() {
           return;
         }
 
-        // Standard clearance path if not simulated anomaly profiles
+        // Standard verification clearance if not flagged
         setIsVerifyingFace(false);
         setFaceVerified(true);
         
@@ -461,11 +461,11 @@ export default function App() {
             </div>
 
             <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-left max-w-md mx-auto">
-              <p className="text-xs font-bold text-amber-500 uppercase tracking-wide">Defense Testing Protocols:</p>
+              <p className="text-xs font-bold text-amber-500 uppercase tracking-wide">Anomaly Testing Protocols:</p>
               <p className="text-xs text-slate-400 mt-1 leading-relaxed font-sans">
-                Test numbers designed to fail biometric mismatch verification during authentication:<br />
-                • Blocked NIN Token Code: <span className="text-white font-mono bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">NIN55443322110</span><br />
-                • Blocked PVC Token Code: <span className="text-white font-mono bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">PVC9988776655</span>
+                These valid numbers pass registration completely but intentionally fail layout checks during sign-in verification:<br />
+                • Targeted NIN Code: <span className="text-white font-mono bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">NIN55443322110</span><br />
+                • Targeted PVC Code: <span className="text-white font-mono bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">PVC9988776655</span>
               </p>
             </div>
           </div>
