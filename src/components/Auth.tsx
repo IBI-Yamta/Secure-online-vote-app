@@ -28,8 +28,8 @@ export function AuthForm() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/20 mb-4">
             <CheckCircle className="w-8 h-8 text-emerald-400" />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">Secure_Online_Vote</h1>
-          <p className="text-slate-400 mt-2">Vote Securely</p>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Taskflow</h1>
+          <p className="text-slate-400 mt-2">Organize your work, amplify your focus</p>
         </div>
 
         {/* Card */}

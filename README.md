@@ -1,3 +1,0 @@
-# Secure-online-vote-app
-
-
