@@ -9,10 +9,13 @@ export default function App() {
     { id: 'c3', name: 'Alhaji Atiku Abubakar', post: 'Presidential', association: 'PDP', votes: 0, color: 'bg-amber-600' },
     { id: 'c4', name: 'Prof. Babagana Zulum', post: 'Gubernatorial', association: 'APC', votes: 0, color: 'bg-purple-600' }
   ];
+  
+  // Restricted codes are added directly to the default whitelist matrix
   const DEFAULT_WHITELIST = [
     'NIN12345678901', 'NIN98765432109', 'PVC2026889911', 'PVC2026554422',
-    'NIN55443322110', 'PVC9988776655' // Whitelisted natively as standard numbers
+    'NIN55443322110', 'PVC9988776655' 
   ];
+  
   const DEFAULT_ELECTION = {
     name: 'Nigeria National General Elections 2025/2026',
     startTime: new Date(Date.now() - 3600000).toISOString().slice(0, 16), // Started 1 hour ago
@@ -458,15 +461,6 @@ export default function App() {
                 <h3 className="text-lg font-bold mt-4 group-hover:text-emerald-500 transition">Admin Node Portal</h3>
                 <p className={`text-xs mt-1 ${s.textMuted}`}>Control national eligibility whitelists, adjust time window schedules, upload candidate rosters, and audit results.</p>
               </button>
-            </div>
-
-            <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-left max-w-md mx-auto">
-              <p className="text-xs font-bold text-amber-500 uppercase tracking-wide">Anomaly Testing Protocols:</p>
-              <p className="text-xs text-slate-400 mt-1 leading-relaxed font-sans">
-                These valid numbers pass registration completely but intentionally fail layout checks during sign-in verification:<br />
-                • Targeted NIN Code: <span className="text-white font-mono bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">NIN55443322110</span><br />
-                • Targeted PVC Code: <span className="text-white font-mono bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">PVC9988776655</span>
-              </p>
             </div>
           </div>
         )}
