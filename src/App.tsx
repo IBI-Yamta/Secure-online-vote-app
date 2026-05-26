@@ -459,7 +459,16 @@ export default function App() {
                 <p className={`text-xs mt-1 ${s.textMuted}`}>Control national eligibility whitelists, adjust time window schedules, upload candidate rosters, and audit results.</p>
               </button>
             </div>
-           
+
+            <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-left max-w-md mx-auto">
+              <p className="text-xs font-bold text-amber-500 uppercase tracking-wide">Anomaly Testing Protocols:</p>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed font-sans">
+                These valid numbers pass registration completely but intentionally fail layout checks during sign-in verification:<br />
+                • Targeted NIN Code: <span className="text-white font-mono bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">NIN55443322110</span><br />
+                • Targeted PVC Code: <span className="text-white font-mono bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">PVC9988776655</span>
+              </p>
+            </div>
+          </div>
         )}
 
         {/* --- VIEW 2: VOTER APPLICATION MODULE --- */}
